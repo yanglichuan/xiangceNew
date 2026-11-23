@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.content.Intent
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -28,17 +29,26 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +64,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -61,7 +72,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.R
+import com.example.data.model.EffectConfig
 import com.example.data.model.ParticleStyle
+import com.example.ui.components.HologramFoilOverlay
 import com.example.ui.components.ParticleOverlayCanvas
 import com.example.ui.components.rememberTiltOffset
 import com.example.ui.theme.AtelierGalleryTheme
@@ -83,11 +96,35 @@ fun PhotoDetailScreen(
     onOpenStudio: (Long) -> Unit
 ) {
     val photo by viewModel.observePhoto(photoId).collectAsStateWithLifecycle(initialValue = null)
+    val galleryUi by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
     val tilt by rememberTiltOffset()
     var dragX by remember { mutableFloatStateOf(0f) }
     var dragY by remember { mutableFloatStateOf(0f) }
     var activeParticle by remember { mutableStateOf(ParticleStyle.DUST_BOKEH) }
+    var hologramEnabled by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.saveNotice.collect { notice ->
+            snackbarHostState.showSnackbar(
+                message = notice.message,
+                duration = SnackbarDuration.Short
+            )
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.shareUriEvent.collect { uri ->
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/jpeg"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(shareIntent, "分享 Atelier 作品"))
+        }
+    }
 
     val smoothDragX by animateFloatAsState(
         targetValue = dragX,
@@ -105,6 +142,10 @@ fun PhotoDetailScreen(
     val density = LocalDensity.current.density
 
     AtelierGalleryTheme(darkScreeningRoom = true) {
+        Scaffold(
+            containerColor = ScreeningObsidian,
+            snackbarHost = { SnackbarHost(snackbarHostState) }
+        ) { _ ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -116,6 +157,13 @@ fun PhotoDetailScreen(
         ) {
             val currentPhoto = photo
             if (currentPhoto != null) {
+                val quickEffectConfig = remember(activeParticle, hologramEnabled) {
+                    EffectConfig(
+                        particleStyle = activeParticle,
+                        hologramFoil = hologramEnabled
+                    )
+                }
+
                 // Top Screening Bar
                 Row(
                     modifier = Modifier
@@ -144,7 +192,70 @@ fun PhotoDetailScreen(
                         }
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            onClick = {
+                                viewModel.quickSavePhotoWithEffect(currentPhoto, quickEffectConfig)
+                            },
+                            enabled = !galleryUi.isQuickSaving,
+                            shape = RoundedCornerShape(50),
+                            color = ScreeningChampagne,
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .testTag("detail_save_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (galleryUi.isQuickSaving) {
+                                    CircularProgressIndicator(
+                                        color = ScreeningObsidian,
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Filled.Download,
+                                        contentDescription = "保存到相册",
+                                        tint = ScreeningObsidian,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "保存效果",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = ScreeningObsidian
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = CircleShape,
+                            color = ScreeningSurface,
+                            border = BorderStroke(1.dp, ScreeningBorder)
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    viewModel.sharePhotoWithEffect(currentPhoto, quickEffectConfig)
+                                },
+                                enabled = !galleryUi.isQuickSaving,
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .testTag("detail_share_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Share,
+                                    contentDescription = "分享效果",
+                                    tint = ScreeningIvory
+                                )
+                            }
+                        }
+
                         Surface(
                             shape = CircleShape,
                             color = ScreeningSurface,
@@ -284,6 +395,14 @@ fun PhotoDetailScreen(
                                         )
                                 )
 
+                                // Live Hologram Foil
+                                if (hologramEnabled) {
+                                    HologramFoilOverlay(
+                                        parallaxOffset = Offset(combinedX, combinedY),
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+
                                 // Live Particle Atmosphere
                                 ParticleOverlayCanvas(
                                     style = activeParticle,
@@ -345,7 +464,7 @@ fun PhotoDetailScreen(
 
                     Row(
                         modifier = Modifier.widthIn(max = 460.dp).fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Surface(
                             onClick = {
@@ -361,7 +480,7 @@ fun PhotoDetailScreen(
                                 .testTag("detail_cycle_particle_btn")
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -369,13 +488,42 @@ fun PhotoDetailScreen(
                                     imageVector = Icons.Filled.AutoAwesome,
                                     contentDescription = "切换光斑特效",
                                     tint = ScreeningChampagne,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = activeParticle.displayName,
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = ScreeningIvory
+                                    color = ScreeningIvory,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+
+                        Surface(
+                            onClick = { hologramEnabled = !hologramEnabled },
+                            shape = RoundedCornerShape(50),
+                            color = if (hologramEnabled) ScreeningChampagne.copy(alpha = 0.22f) else ScreeningSurfaceHigh,
+                            border = BorderStroke(1.dp, if (hologramEnabled) ScreeningChampagne else ScreeningBorder),
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .testTag("detail_hologram_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Layers,
+                                    contentDescription = "全息镀膜",
+                                    tint = ScreeningChampagne,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "镭射膜",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = if (hologramEnabled) ScreeningChampagne else ScreeningIvory
                                 )
                             }
                         }
@@ -385,12 +533,12 @@ fun PhotoDetailScreen(
                             shape = RoundedCornerShape(50),
                             color = ScreeningChampagne,
                             modifier = Modifier
-                                .weight(1.25f)
+                                .weight(1.1f)
                                 .minimumInteractiveComponentSize()
                                 .testTag("detail_open_studio_btn")
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -398,11 +546,11 @@ fun PhotoDetailScreen(
                                     imageVector = Icons.Filled.AutoFixHigh,
                                     contentDescription = "进入创意特效工坊",
                                     tint = ScreeningObsidian,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "进入特效工坊",
+                                    text = "特效工坊",
                                     style = MaterialTheme.typography.labelLarge,
                                     color = ScreeningObsidian
                                 )
@@ -438,6 +586,7 @@ fun PhotoDetailScreen(
                     )
                 }
             }
+        }
         }
     }
 }

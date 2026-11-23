@@ -63,6 +63,56 @@ object ArtworkExporter {
         framed
     }
 
+    suspend fun renderCinemaStill(
+        sourceBitmap: Bitmap,
+        title: String,
+        catalogCode: String,
+        particleStyle: ParticleStyle,
+        cinemaScope: Boolean
+    ): Bitmap = withContext(Dispatchers.Default) {
+        val outW = 1080
+        val outH = 1440
+        val out = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        canvas.drawColor(Color.parseColor("#0E0E10"))
+
+        drawCenterCropped(canvas, sourceBitmap, RectF(0f, 0f, outW.toFloat(), outH.toFloat()))
+        bakeParticlesOnPhoto(out, particleStyle)
+
+        val vignette = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(
+                0f, 0f, 0f, outH.toFloat(),
+                intArrayOf(Color.argb(150, 0, 0, 0), Color.TRANSPARENT, Color.argb(215, 0, 0, 0)),
+                floatArrayOf(0f, 0.45f, 1f),
+                Shader.TileMode.CLAMP
+            )
+        }
+        canvas.drawRect(0f, 0f, outW.toFloat(), outH.toFloat(), vignette)
+
+        if (cinemaScope) {
+            val barPaint = Paint().apply { color = Color.BLACK }
+            canvas.drawRect(0f, 0f, outW.toFloat(), 190f, barPaint)
+            canvas.drawRect(0f, outH - 220f, outW.toFloat(), outH.toFloat(), barPaint)
+        }
+
+        val tagPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#D4AF37")
+            textSize = 26f
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        }
+        canvas.drawText(catalogCode, outW / 2f, outH - 135f, tagPaint)
+
+        val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#F5F2EB")
+            textSize = 48f
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
+        }
+        canvas.drawText(title, outW / 2f, outH - 76f, titlePaint)
+        out
+    }
+
     suspend fun renderCollagePoster(
         bitmaps: List<Bitmap>,
         layout: CollageLayout,

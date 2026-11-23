@@ -49,22 +49,48 @@ import com.example.ui.theme.ScreeningSurfaceHigh
 @Composable
 fun StudioFilterTab(
     config: EffectConfig,
+    isSaving: Boolean,
     onApplyPreset: (FxPreset) -> Unit,
+    onBatchSavePresets: () -> Unit,
     onSelectFilter: (ArtFilter) -> Unit,
     onIntensityChange: (Float) -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(195.dp)
+            .height(205.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        Text(
-            text = "一键特效大师模板（组合滤镜 + 光效 + 装裱）",
-            style = MaterialTheme.typography.labelSmall,
-            color = ScreeningChampagne,
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 2.dp)
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "大师特效模板（滤镜 + 光效 + 装裱）",
+                style = MaterialTheme.typography.labelSmall,
+                color = ScreeningChampagne
+            )
+            Surface(
+                onClick = onBatchSavePresets,
+                enabled = !isSaving,
+                shape = RoundedCornerShape(50),
+                color = ScreeningChampagne.copy(alpha = 0.16f),
+                border = BorderStroke(1.dp, ScreeningChampagne),
+                modifier = Modifier
+                    .minimumInteractiveComponentSize()
+                    .testTag("studio_batch_save_btn")
+            ) {
+                Text(
+                    text = "一键连存6套",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ScreeningChampagne,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                )
+            }
+        }
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)

@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -89,6 +90,7 @@ fun Corridor3DScreen(
     onOpenDetail: (Long) -> Unit,
     onOpenStudio: (Long) -> Unit,
     onToggleFavorite: (PhotoEntity) -> Unit,
+    onQuickSave: (PhotoEntity) -> Unit,
     modifier: Modifier = Modifier
 ) {
     if (photos.isEmpty()) return
@@ -364,6 +366,28 @@ fun Corridor3DScreen(
                                 text = "3D 看图",
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MuseumInk
+                            )
+                        }
+                    }
+
+                    Surface(
+                        onClick = { onQuickSave(photo) },
+                        shape = CircleShape,
+                        color = MuseumCanvas,
+                        border = BorderStroke(1.dp, MuseumHairline),
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("corridor_save_btn")
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Download,
+                                contentDescription = "保存到手机相册",
+                                tint = MuseumInk,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }

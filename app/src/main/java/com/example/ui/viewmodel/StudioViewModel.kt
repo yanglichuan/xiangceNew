@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AtelierContainer
 import com.example.data.model.ArtFilter
+import com.example.data.model.CURATED_FX_PRESETS
 import com.example.data.model.EffectConfig
 import com.example.data.model.FrameStyle
 import com.example.data.model.FxPreset
@@ -27,12 +28,20 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
 
+data class StudioSaveNotice(
+    val savedPhotoId: Long,
+    val message: String
+)
+
 data class StudioUiState(
     val photo: PhotoEntity? = null,
     val config: EffectConfig = EffectConfig(),
     val previewBitmap: Bitmap? = null,
     val isRenderingPreview: Boolean = false,
     val isSaving: Boolean = false,
+    val savedCount: Int = 0,
+    val lastSavedPhotoId: Long? = null,
+    val batchProgressText: String? = null,
     val activeTab: Int = 0
 )
 
@@ -43,13 +52,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val _uiState = MutableStateFlow(StudioUiState())
     val uiState: StateFlow<StudioUiState> = _uiState.asStateFlow()
 
-    private val _savedPhotoEvent = MutableSharedFlow<Long>(extraBufferCapacity = 2)
-    val savedPhotoEvent = _savedPhotoEvent.asSharedFlow()
+    private val _savedNoticeEvent = MutableSharedFlow<StudioSaveNotice>(extraBufferCapacity = 4)
+    val savedNoticeEvent = _savedNoticeEvent.asSharedFlow()
 
     private val _shareUriEvent = MutableSharedFlow<Uri>(extraBufferCapacity = 2)
     val shareUriEvent = _shareUriEvent.asSharedFlow()
 
-    private val _errorEvent = MutableSharedFlow<String>(extraBufferCapacity = 2)
+    private val _errorEvent = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val errorEvent = _errorEvent.asSharedFlow()
 
     private var basePreviewBitmap: Bitmap? = null
@@ -189,7 +198,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val photo = _uiState.value.photo ?: return
         val cfg = _uiState.value.config
         viewModelScope.launch {
-            _uiState.update { it.copy(isSaving = true) }
+            _uiState.update { it.copy(isSaving = true, batchProgressText = null) }
             try {
                 val hiResSource = mediaManager.decodeBitmap(photo, maxDimension = 1600)
                 if (hiResSource == null) {
@@ -198,18 +207,119 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     return@launch
                 }
                 val rendered = ArtworkExporter.renderMasterpiece(hiResSource, cfg, photo.title)
-                if (hiResSource != rendered) hiResSource.recycle()
-                val newId = repository.saveCreativeArtwork(
+                if (hiResSource != rendered && !hiResSource.isRecycled) hiResSource.recycle()
+
+                val tag = buildEffectTag(cfg)
+                val outcome = repository.saveCreativeArtwork(
                     sourcePhoto = photo,
                     renderedBitmap = rendered,
-                    effectTag = cfg.filter.tagCode
+                    effectTag = tag
                 )
-                rendered.recycle()
-                _uiState.update { it.copy(isSaving = false) }
-                _savedPhotoEvent.emit(newId)
+                if (!rendered.isRecycled) rendered.recycle()
+
+                val msg = if (outcome.savedToSystemPhotos) {
+                    "「$tag」已保存至手机系统相册与展厅"
+                } else {
+                    "「$tag」已保存至 Atelier 展厅"
+                }
+                _uiState.update {
+                    it.copy(
+                        isSaving = false,
+                        savedCount = it.savedCount + 1,
+                        lastSavedPhotoId = outcome.photoId
+                    )
+                }
+                _savedNoticeEvent.emit(StudioSaveNotice(outcome.photoId, msg))
             } catch (_: Exception) {
                 _uiState.update { it.copy(isSaving = false) }
                 _errorEvent.emit("保存特效成品失败，请重试")
+            }
+        }
+    }
+
+    fun batchSavePresetPack() {
+        val photo = _uiState.value.photo ?: return
+        val presets = CURATED_FX_PRESETS
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSaving = true, batchProgressText = "准备渲染 ${presets.size} 种风格…") }
+            var hiResSource: Bitmap? = null
+            try {
+                hiResSource = mediaManager.decodeBitmap(photo, maxDimension = 1280)
+                if (hiResSource == null) {
+                    _errorEvent.emit("无法读取原图进行批量保存")
+                    _uiState.update { it.copy(isSaving = false, batchProgressText = null) }
+                    return@launch
+                }
+
+                var lastId = -1L
+                var systemCount = 0
+                presets.forEachIndexed { idx, preset ->
+                    _uiState.update {
+                        it.copy(batchProgressText = "连存 ${idx + 1}/${presets.size} · ${preset.name}")
+                    }
+                    val rendered = ArtworkExporter.renderMasterpiece(hiResSource, preset.config, photo.title)
+                    val outcome = repository.saveCreativeArtwork(
+                        sourcePhoto = photo,
+                        renderedBitmap = rendered,
+                        effectTag = preset.name
+                    )
+                    if (!rendered.isRecycled) rendered.recycle()
+                    lastId = outcome.photoId
+                    if (outcome.savedToSystemPhotos) systemCount++
+                }
+
+                val msg = if (systemCount > 0) {
+                    "已连存 ${presets.size} 款特效大片至手机相册与展厅"
+                } else {
+                    "已连存 ${presets.size} 款特效大片至 Atelier 展厅"
+                }
+                _uiState.update {
+                    it.copy(
+                        isSaving = false,
+                        batchProgressText = null,
+                        savedCount = it.savedCount + presets.size,
+                        lastSavedPhotoId = if (lastId > 0) lastId else it.lastSavedPhotoId
+                    )
+                }
+                if (lastId > 0) {
+                    _savedNoticeEvent.emit(StudioSaveNotice(lastId, msg))
+                }
+            } catch (_: Exception) {
+                _uiState.update { it.copy(isSaving = false, batchProgressText = null) }
+                _errorEvent.emit("批量连存中途中断，请重试")
+            } finally {
+                if (hiResSource != null && !hiResSource.isRecycled) {
+                    hiResSource.recycle()
+                }
+            }
+        }
+    }
+
+    fun exportToCustomUri(targetUri: Uri) {
+        val photo = _uiState.value.photo ?: return
+        val cfg = _uiState.value.config
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSaving = true) }
+            try {
+                val hiResSource = mediaManager.decodeBitmap(photo, maxDimension = 1600)
+                if (hiResSource == null) {
+                    _errorEvent.emit("无法读取原图")
+                    _uiState.update { it.copy(isSaving = false) }
+                    return@launch
+                }
+                val rendered = ArtworkExporter.renderMasterpiece(hiResSource, cfg, photo.title)
+                if (hiResSource != rendered && !hiResSource.isRecycled) hiResSource.recycle()
+                val ok = mediaManager.writeBitmapToUri(rendered, targetUri)
+                if (!rendered.isRecycled) rendered.recycle()
+                _uiState.update { it.copy(isSaving = false) }
+                if (ok) {
+                    _errorEvent.emit("已导出高清文件到指定位置")
+                } else {
+                    _errorEvent.emit("写入指定位置失败，请重试")
+                }
+            } catch (_: Exception) {
+                _uiState.update { it.copy(isSaving = false) }
+                _errorEvent.emit("导出失败，请重试")
             }
         }
     }
@@ -227,9 +337,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     return@launch
                 }
                 val rendered = ArtworkExporter.renderMasterpiece(hiResSource, cfg, photo.title)
-                if (hiResSource != rendered) hiResSource.recycle()
+                if (hiResSource != rendered && !hiResSource.isRecycled) hiResSource.recycle()
                 val uri = mediaManager.createShareUri(rendered)
-                rendered.recycle()
+                if (!rendered.isRecycled) rendered.recycle()
                 _uiState.update { it.copy(isSaving = false) }
                 _shareUriEvent.emit(uri)
             } catch (_: Exception) {
@@ -237,6 +347,16 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 _errorEvent.emit("分享导出失败，请重试")
             }
         }
+    }
+
+    private fun buildEffectTag(cfg: EffectConfig): String {
+        val parts = mutableListOf<String>()
+        if (cfg.filter != ArtFilter.ORIGINAL) parts.add(cfg.filter.displayName)
+        if (cfg.hologramFoil) parts.add("全息")
+        if (cfg.particleStyle != ParticleStyle.NONE) parts.add(cfg.particleStyle.displayName)
+        if (cfg.frameStyle != FrameStyle.NONE) parts.add(cfg.frameStyle.displayName)
+        if (cfg.stickers.isNotEmpty()) parts.add("贴纸")
+        return if (parts.isEmpty()) "精修典藏" else parts.take(2).joinToString("+")
     }
 
     private fun updateConfig(transform: (EffectConfig) -> EffectConfig) {

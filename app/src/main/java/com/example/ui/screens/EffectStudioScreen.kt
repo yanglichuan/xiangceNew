@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -24,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,8 +34,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -99,13 +104,28 @@ fun EffectStudioScreen(
     var dragTiltY by remember { mutableFloatStateOf(0f) }
     var photoBoxSize by remember { mutableStateOf(IntSize.Zero) }
 
+    val saveAsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("image/jpeg")
+    ) { uri ->
+        if (uri != null) {
+            studioViewModel.exportToCustomUri(uri)
+        }
+    }
+
     LaunchedEffect(photoId) {
         studioViewModel.loadPhoto(photoId)
     }
 
     LaunchedEffect(Unit) {
-        studioViewModel.savedPhotoEvent.collect { newId ->
-            onSavedArtwork(newId)
+        studioViewModel.savedNoticeEvent.collect { notice ->
+            val result = snackbarHostState.showSnackbar(
+                message = notice.message,
+                actionLabel = "查看成片",
+                duration = SnackbarDuration.Short
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                onSavedArtwork(notice.savedPhotoId)
+            }
         }
     }
 
@@ -141,11 +161,11 @@ fun EffectStudioScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                         IconButton(
                             onClick = onBack,
                             modifier = Modifier
@@ -162,18 +182,39 @@ fun EffectStudioScreen(
                             Text(
                                 text = "FX ATELIER · ${uiState.config.filter.tagCode}",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = ScreeningChampagne
+                                color = ScreeningChampagne,
+                                maxLines = 1
                             )
-                            Text(
-                                text = "创意特效工坊",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = ScreeningIvory
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "创意特效工坊",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = ScreeningIvory
+                                )
+                                if (uiState.savedCount > 0 && uiState.lastSavedPhotoId != null) {
+                                    Surface(
+                                        onClick = { onSavedArtwork(uiState.lastSavedPhotoId!!) },
+                                        shape = RoundedCornerShape(50),
+                                        color = ScreeningChampagne.copy(alpha = 0.18f),
+                                        border = BorderStroke(1.dp, ScreeningChampagne.copy(alpha = 0.6f))
+                                    ) {
+                                        Text(
+                                            text = "已存${uiState.savedCount}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = ScreeningChampagne,
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
 
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(
@@ -186,6 +227,23 @@ fun EffectStudioScreen(
                                 imageVector = Icons.Filled.Refresh,
                                 contentDescription = "重置特效",
                                 tint = ScreeningMuted
+                            )
+                        }
+
+                        IconButton(
+                            onClick = {
+                                val name = "Atelier_${uiState.config.filter.tagCode}_${System.currentTimeMillis()}.jpg"
+                                saveAsLauncher.launch(name)
+                            },
+                            enabled = !uiState.isSaving,
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .testTag("studio_save_as_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.DriveFileMove,
+                                contentDescription = "另存为文件",
+                                tint = ScreeningIvory
                             )
                         }
 
@@ -213,7 +271,7 @@ fun EffectStudioScreen(
                                 .testTag("studio_save_button")
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                                modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (uiState.isSaving) {
@@ -225,14 +283,14 @@ fun EffectStudioScreen(
                                 } else {
                                     Icon(
                                         imageVector = Icons.Filled.Check,
-                                        contentDescription = "保存成品",
+                                        contentDescription = "保存到相册",
                                         tint = ScreeningObsidian,
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
-                                Spacer(modifier = Modifier.width(5.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "保存成品",
+                                    text = "保存",
                                     style = MaterialTheme.typography.labelLarge,
                                     color = ScreeningObsidian
                                 )
@@ -366,7 +424,31 @@ fun EffectStudioScreen(
                         CircularProgressIndicator(color = ScreeningChampagne)
                     }
 
-                    if (uiState.isRenderingPreview) {
+                    if (uiState.batchProgressText != null) {
+                        Surface(
+                            modifier = Modifier.align(Alignment.Center),
+                            shape = RoundedCornerShape(20.dp),
+                            color = ScreeningObsidian.copy(alpha = 0.88f),
+                            border = BorderStroke(1.dp, ScreeningChampagne)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    color = ScreeningChampagne,
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.5.dp
+                                )
+                                Text(
+                                    text = uiState.batchProgressText ?: "",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = ScreeningChampagne
+                                )
+                            }
+                        }
+                    } else if (uiState.isRenderingPreview) {
                         Surface(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
@@ -432,7 +514,9 @@ fun EffectStudioScreen(
                         when (uiState.activeTab) {
                             0 -> StudioFilterTab(
                                 config = uiState.config,
+                                isSaving = uiState.isSaving,
                                 onApplyPreset = studioViewModel::applyPreset,
+                                onBatchSavePresets = studioViewModel::batchSavePresetPack,
                                 onSelectFilter = studioViewModel::selectFilter,
                                 onIntensityChange = studioViewModel::setFilterIntensity
                             )

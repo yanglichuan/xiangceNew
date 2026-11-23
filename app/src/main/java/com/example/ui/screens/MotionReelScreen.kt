@@ -38,14 +38,20 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -104,6 +110,16 @@ fun MotionReelScreen(
     var activeTransition by remember { mutableStateOf(SlideshowTransition.KEN_BURNS) }
     var activeParticle by remember { mutableStateOf(ParticleStyle.DUST_BOKEH) }
     var slideProgress by remember { mutableFloatStateOf(0f) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(Unit) {
+        viewModel.saveNotice.collect { notice ->
+            snackbarHostState.showSnackbar(
+                message = notice.message,
+                duration = SnackbarDuration.Short
+            )
+        }
+    }
 
     val durationMs = if (fastTempo) 2600L else 4500L
 
@@ -142,6 +158,10 @@ fun MotionReelScreen(
     val density = LocalDensity.current.density
 
     AtelierGalleryTheme(darkScreeningRoom = true) {
+        Scaffold(
+            containerColor = ScreeningObsidian,
+            snackbarHost = { SnackbarHost(snackbarHostState) }
+        ) { _ ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -303,7 +323,45 @@ fun MotionReelScreen(
                             }
                         }
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Surface(
+                                onClick = {
+                                    viewModel.captureMotionReelStill(
+                                        photo = photos[safeIndex],
+                                        particleStyle = activeParticle,
+                                        cinemaScope = cinemaScope
+                                    )
+                                },
+                                enabled = !uiState.isQuickSaving,
+                                shape = RoundedCornerShape(50),
+                                color = ScreeningChampagne,
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .testTag("reel_save_still_btn")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (uiState.isQuickSaving) {
+                                        CircularProgressIndicator(
+                                            color = ScreeningObsidian,
+                                            modifier = Modifier.size(14.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.Filled.CameraAlt,
+                                            contentDescription = "定格保存剧照",
+                                            tint = ScreeningObsidian,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("定格", style = MaterialTheme.typography.labelLarge, color = ScreeningObsidian)
+                                }
+                            }
+
                             Surface(
                                 onClick = {
                                     val list = ParticleStyle.entries
@@ -315,11 +373,11 @@ fun MotionReelScreen(
                                 modifier = Modifier.minimumInteractiveComponentSize()
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(Icons.Filled.AutoAwesome, contentDescription = "粒子", tint = ScreeningChampagne, modifier = Modifier.size(15.dp))
-                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
                                     Text(activeParticle.displayName, style = MaterialTheme.typography.labelLarge, color = ScreeningIvory)
                                 }
                             }
@@ -332,11 +390,11 @@ fun MotionReelScreen(
                                 modifier = Modifier.minimumInteractiveComponentSize()
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(Icons.Filled.AspectRatio, contentDescription = "宽银幕", tint = ScreeningChampagne, modifier = Modifier.size(15.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Spacer(modifier = Modifier.width(3.dp))
                                     Text("2.39:1", style = MaterialTheme.typography.labelLarge, color = ScreeningIvory)
                                 }
                             }
@@ -349,11 +407,11 @@ fun MotionReelScreen(
                                 modifier = Modifier.minimumInteractiveComponentSize().testTag("reel_tempo_button")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(Icons.Filled.Speed, contentDescription = "切换节奏", tint = ScreeningChampagne, modifier = Modifier.size(15.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Spacer(modifier = Modifier.width(3.dp))
                                     Text(if (fastTempo) "2.6s" else "4.5s", style = MaterialTheme.typography.labelLarge, color = ScreeningIvory)
                                 }
                             }
@@ -463,6 +521,7 @@ fun MotionReelScreen(
                     }
                 }
             }
+        }
         }
     }
 }

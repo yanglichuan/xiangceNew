@@ -139,7 +139,8 @@ fun GalleryHubScreen(
                                     mediaManager = viewModel.mediaManager,
                                     onOpenDetail = onOpenDetail,
                                     onOpenStudio = onOpenStudio,
-                                    onToggleFavorite = viewModel::toggleFavorite
+                                    onToggleFavorite = viewModel::toggleFavorite,
+                                    onQuickSave = { photo -> viewModel.quickSavePhotoWithEffect(photo) }
                                 )
                                 GalleryMode.CUBE_PARALLAX -> CubeParallaxScreen(
                                     photos = uiState.photos,

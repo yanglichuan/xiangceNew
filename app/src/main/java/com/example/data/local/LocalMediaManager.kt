@@ -1,5 +1,6 @@
 package com.example.data.local
 
+import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -13,6 +14,9 @@ import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.media.ExifInterface
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import com.example.R
 import com.example.data.model.PhotoEntity
@@ -25,6 +29,12 @@ import java.util.UUID
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.random.Random
+
+data class SavedMediaResult(
+    val filePath: String,
+    val aspectRatio: Float,
+    val savedToSystemPhotos: Boolean
+)
 
 class LocalMediaManager(private val context: Context) {
 
@@ -126,13 +136,75 @@ class LocalMediaManager(private val context: Context) {
         }
     }
 
-    suspend fun saveExportedBitmap(bitmap: Bitmap): Pair<String, Float> = withContext(Dispatchers.IO) {
-        val outFile = File(mediaDir, "atelier_fx_${System.currentTimeMillis()}.jpg")
+    suspend fun saveExportedBitmap(
+        bitmap: Bitmap,
+        systemTitle: String = "Atelier_${System.currentTimeMillis()}"
+    ): SavedMediaResult = withContext(Dispatchers.IO) {
+        val uniqueName = "atelier_fx_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(4)}.jpg"
+        val outFile = File(mediaDir, uniqueName)
         FileOutputStream(outFile).use { fos ->
             bitmap.compress(Bitmap.CompressFormat.JPEG, 95, fos)
         }
         val aspectRatio = (bitmap.width.toFloat() / max(1, bitmap.height)).coerceIn(0.45f, 2.2f)
-        outFile.absolutePath to aspectRatio
+        val savedToSystem = saveBitmapToSystemGallery(bitmap, systemTitle)
+        SavedMediaResult(
+            filePath = outFile.absolutePath,
+            aspectRatio = aspectRatio,
+            savedToSystemPhotos = savedToSystem
+        )
+    }
+
+    suspend fun saveBitmapToSystemGallery(
+        bitmap: Bitmap,
+        displayTitle: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val resolver = context.contentResolver
+            val safeName = displayTitle
+                .replace(Regex("[^a-zA-Z0-9\\u4e00-\\u9fa5_-]"), "_")
+                .take(36)
+                .ifBlank { "Atelier" }
+            val fileName = "${safeName}_${System.currentTimeMillis()}.jpg"
+
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(
+                        MediaStore.Images.Media.RELATIVE_PATH,
+                        "${Environment.DIRECTORY_PICTURES}/AtelierGallery"
+                    )
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+            }
+
+            val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                ?: return@withContext false
+
+            val wrote = resolver.openOutputStream(uri)?.use { out ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+            } ?: false
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val update = ContentValues().apply {
+                    put(MediaStore.Images.Media.IS_PENDING, 0)
+                }
+                resolver.update(uri, update, null, null)
+            }
+            wrote
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    suspend fun writeBitmapToUri(bitmap: Bitmap, targetUri: Uri): Boolean = withContext(Dispatchers.IO) {
+        try {
+            context.contentResolver.openOutputStream(targetUri)?.use { out ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+            } ?: false
+        } catch (_: Exception) {
+            false
+        }
     }
 
     suspend fun createShareUri(bitmap: Bitmap): Uri = withContext(Dispatchers.IO) {

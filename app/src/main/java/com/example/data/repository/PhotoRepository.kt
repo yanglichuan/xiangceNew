@@ -10,6 +10,11 @@ import com.example.data.model.PhotoSourceType
 import kotlinx.coroutines.flow.Flow
 import java.util.Locale
 
+data class SaveArtworkOutcome(
+    val photoId: Long,
+    val savedToSystemPhotos: Boolean
+)
+
 class PhotoRepository(
     private val photoDao: PhotoDao,
     val mediaManager: LocalMediaManager
@@ -162,51 +167,51 @@ class PhotoRepository(
         sourcePhoto: PhotoEntity,
         renderedBitmap: Bitmap,
         effectTag: String
-    ): Long {
-        val (path, ratio) = mediaManager.saveExportedBitmap(renderedBitmap)
+    ): SaveArtworkOutcome {
+        val baseName = sourcePhoto.title.substringBefore("·").trim().ifBlank { "Atelier" }
+        val saved = mediaManager.saveExportedBitmap(renderedBitmap, "${baseName}_$effectTag")
         val count = photoDao.countPhotos() + 1
         val code = String.format(Locale.US, "ATELIER %02d · %s", count, effectTag)
-        val newTitle = if (sourcePhoto.title.contains("·")) {
-            "${sourcePhoto.title.substringBefore("·").trim()} · 特效典藏"
-        } else {
-            "${sourcePhoto.title} · 特效版"
-        }
-        return photoDao.insertPhoto(
+        val newTitle = "$baseName · $effectTag"
+        val id = photoDao.insertPhoto(
             PhotoEntity(
                 title = newTitle,
                 catalogCode = code,
                 exifSummary = "特效工坊创作 · $effectTag",
                 sourceType = PhotoSourceType.LOCAL_FILE,
-                filePath = path,
-                aspectRatio = ratio,
+                filePath = saved.filePath,
+                aspectRatio = saved.aspectRatio,
                 isFavorite = true,
                 createdAt = System.currentTimeMillis(),
                 effectTag = effectTag
             )
         )
+        return SaveArtworkOutcome(photoId = id, savedToSystemPhotos = saved.savedToSystemPhotos)
     }
 
     suspend fun saveCollageArtwork(
         title: String,
         layout: CollageLayout,
         renderedBitmap: Bitmap
-    ): Long {
-        val (path, ratio) = mediaManager.saveExportedBitmap(renderedBitmap)
+    ): SaveArtworkOutcome {
+        val cleanTitle = title.ifBlank { "${layout.displayName}海报" }
+        val saved = mediaManager.saveExportedBitmap(renderedBitmap, cleanTitle)
         val count = photoDao.countPhotos() + 1
         val code = String.format(Locale.US, "POSTER %02d · %s", count, layout.displayName)
-        return photoDao.insertPhoto(
+        val id = photoDao.insertPhoto(
             PhotoEntity(
-                title = title.ifBlank { "${layout.displayName}海报" },
+                title = cleanTitle,
                 catalogCode = code,
                 exifSummary = "策展拼图工坊 · ${layout.displayName}",
                 sourceType = PhotoSourceType.LOCAL_FILE,
-                filePath = path,
-                aspectRatio = ratio,
+                filePath = saved.filePath,
+                aspectRatio = saved.aspectRatio,
                 isFavorite = true,
                 createdAt = System.currentTimeMillis(),
                 effectTag = layout.displayName
             )
         )
+        return SaveArtworkOutcome(photoId = id, savedToSystemPhotos = saved.savedToSystemPhotos)
     }
 
     suspend fun toggleFavorite(photo: PhotoEntity) {

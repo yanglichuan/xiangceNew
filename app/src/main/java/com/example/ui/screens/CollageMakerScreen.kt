@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,16 +26,23 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +54,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -77,6 +86,8 @@ fun CollageMakerScreen(
     val allPhotos = uiState.allPhotos
     if (allPhotos.isEmpty()) return
 
+    val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
     var layout by remember { mutableStateOf(CollageLayout.GRID_2X2) }
     var darkPosterTheme by remember { mutableStateOf(false) }
     var posterTitle by remember { mutableStateOf("ATELIER 策展海报") }
@@ -95,7 +106,35 @@ fun CollageMakerScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        viewModel.saveNotice.collect { notice ->
+            val result = snackbarHostState.showSnackbar(
+                message = notice.message,
+                actionLabel = "查看海报",
+                duration = SnackbarDuration.Short
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                onCreatedArtwork(notice.savedPhotoId)
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.shareUriEvent.collect { uri ->
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/jpeg"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(shareIntent, "分享 Atelier 拼图海报"))
+        }
+    }
+
     AtelierGalleryTheme(darkScreeningRoom = true) {
+        Scaffold(
+            containerColor = ScreeningObsidian,
+            snackbarHost = { SnackbarHost(snackbarHostState) }
+        ) { _ ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -124,36 +163,55 @@ fun CollageMakerScreen(
                     }
                 }
 
-                Surface(
-                    onClick = {
-                        viewModel.createAndSaveCollage(
-                            selectedPhotos = pickedPhotos.take(layout.requiredCount),
-                            layout = layout,
-                            title = posterTitle,
-                            darkTheme = darkPosterTheme,
-                            onDone = onCreatedArtwork
-                        )
-                    },
-                    enabled = !uiState.isSavingCollage,
-                    shape = RoundedCornerShape(50),
-                    color = ScreeningChampagne,
-                    modifier = Modifier.minimumInteractiveComponentSize().testTag("collage_save_btn")
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (uiState.isSavingCollage) {
-                            CircularProgressIndicator(
-                                color = ScreeningObsidian,
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp
+                    IconButton(
+                        onClick = {
+                            viewModel.shareCollagePoster(
+                                selectedPhotos = pickedPhotos.take(layout.requiredCount),
+                                layout = layout,
+                                title = posterTitle,
+                                darkTheme = darkPosterTheme
                             )
-                        } else {
-                            Icon(Icons.Filled.Check, contentDescription = "生成海报", tint = ScreeningObsidian, modifier = Modifier.size(16.dp))
+                        },
+                        enabled = !uiState.isSavingCollage,
+                        modifier = Modifier.minimumInteractiveComponentSize().testTag("collage_share_btn")
+                    ) {
+                        Icon(Icons.Filled.Share, contentDescription = "分享海报", tint = ScreeningIvory)
+                    }
+
+                    Surface(
+                        onClick = {
+                            viewModel.createAndSaveCollage(
+                                selectedPhotos = pickedPhotos.take(layout.requiredCount),
+                                layout = layout,
+                                title = posterTitle,
+                                darkTheme = darkPosterTheme
+                            )
+                        },
+                        enabled = !uiState.isSavingCollage,
+                        shape = RoundedCornerShape(50),
+                        color = ScreeningChampagne,
+                        modifier = Modifier.minimumInteractiveComponentSize().testTag("collage_save_btn")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (uiState.isSavingCollage) {
+                                CircularProgressIndicator(
+                                    color = ScreeningObsidian,
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(Icons.Filled.Check, contentDescription = "保存海报", tint = ScreeningObsidian, modifier = Modifier.size(16.dp))
+                            }
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text("保存海报", style = MaterialTheme.typography.labelLarge, color = ScreeningObsidian)
                         }
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text("生成海报", style = MaterialTheme.typography.labelLarge, color = ScreeningObsidian)
                     }
                 }
             }
@@ -420,6 +478,7 @@ fun CollageMakerScreen(
                     }
                 }
             }
+        }
         }
     }
 }

@@ -96,5 +96,20 @@ class ExampleRobolectricTest {
         )
         assertEquals(1200, collage.width)
         assertEquals(1600, collage.height)
+
+        val still = ArtworkExporter.renderCinemaStill(
+            sourceBitmap = source,
+            title = "CINEMA TEST",
+            catalogCode = "NO. 01",
+            particleStyle = ParticleStyle.DUST_BOKEH,
+            cinemaScope = true
+        )
+        assertEquals(1080, still.width)
+        assertEquals(1440, still.height)
+
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val manager = com.example.data.local.LocalMediaManager(context)
+        val saved = manager.saveExportedBitmap(exported, "test_fx")
+        assertTrue("Saved file exists", java.io.File(saved.filePath).exists())
     }
 }

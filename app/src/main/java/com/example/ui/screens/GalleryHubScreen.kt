@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.model.ExhibitionFilter
 import com.example.data.model.GalleryMode
 import com.example.ui.components.ModeSwitcherBar
 import com.example.ui.components.MuseumHeader
@@ -54,6 +55,7 @@ fun GalleryHubScreen(
     viewModel: GalleryViewModel,
     onOpenDetail: (Long) -> Unit,
     onOpenStudio: (Long) -> Unit,
+    onOpenCollage: () -> Unit,
     onOpenMotionReel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -93,13 +95,14 @@ fun GalleryHubScreen(
                 MuseumHeader(
                     photoCount = uiState.photos.size,
                     activeMode = uiState.activeMode,
-                    favoritesOnly = uiState.favoritesOnly,
-                    onToggleFavorites = viewModel::toggleFavoritesFilter,
+                    activeFilter = uiState.exhibitionFilter,
+                    onFilterSelected = viewModel::setExhibitionFilter,
                     onImportClick = {
                         photoPickerLauncher.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                         )
                     },
+                    onCollageClick = onOpenCollage,
                     onMotionReelClick = onOpenMotionReel
                 )
 
@@ -113,8 +116,8 @@ fun GalleryHubScreen(
                         }
                     } else if (uiState.photos.isEmpty()) {
                         EmptyExhibitionView(
-                            favoritesOnly = uiState.favoritesOnly,
-                            onClearFilter = viewModel::toggleFavoritesFilter,
+                            filter = uiState.exhibitionFilter,
+                            onResetFilter = { viewModel.setExhibitionFilter(ExhibitionFilter.ALL) },
                             onImport = {
                                 photoPickerLauncher.launch(
                                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
@@ -143,6 +146,11 @@ fun GalleryHubScreen(
                                     mediaManager = viewModel.mediaManager,
                                     onOpenDetail = onOpenDetail
                                 )
+                                GalleryMode.GLOBE_3D -> Globe3DScreen(
+                                    photos = uiState.photos,
+                                    mediaManager = viewModel.mediaManager,
+                                    onOpenDetail = onOpenDetail
+                                )
                                 GalleryMode.PHYSICS_PILE -> PhysicsPileScreen(
                                     photos = uiState.photos,
                                     mediaManager = viewModel.mediaManager,
@@ -151,8 +159,13 @@ fun GalleryHubScreen(
                                 GalleryMode.TIMELINE -> TimelineScreen(
                                     photos = uiState.photos,
                                     columns = uiState.timelineColumns,
+                                    selectedIds = uiState.selectedIds,
                                     mediaManager = viewModel.mediaManager,
                                     onChangeColumns = viewModel::setTimelineColumns,
+                                    onToggleSelect = viewModel::toggleSelectPhoto,
+                                    onClearSelection = viewModel::clearSelection,
+                                    onCreateCollageFromSelection = onOpenCollage,
+                                    onPlayReelFromSelection = onOpenMotionReel,
                                     onOpenDetail = onOpenDetail,
                                     onToggleFavorite = viewModel::toggleFavorite
                                 )
@@ -199,8 +212,8 @@ fun GalleryHubScreen(
 
 @Composable
 private fun EmptyExhibitionView(
-    favoritesOnly: Boolean,
-    onClearFilter: () -> Unit,
+    filter: ExhibitionFilter,
+    onResetFilter: () -> Unit,
     onImport: () -> Unit
 ) {
     Column(
@@ -218,26 +231,34 @@ private fun EmptyExhibitionView(
         )
         Spacer(modifier = Modifier.height(14.dp))
         Text(
-            text = if (favoritesOnly) "暂无收藏的展品" else "展厅暂无作品",
+            text = when (filter) {
+                ExhibitionFilter.FX_ONLY -> "还没有创作特效作品"
+                ExhibitionFilter.FAVORITES -> "暂无收藏的展品"
+                ExhibitionFilter.ALL -> "展厅暂无作品"
+            },
             style = MaterialTheme.typography.headlineMedium,
             color = MuseumInk
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            text = if (favoritesOnly) "点击任意照片右上角红心即可收入私藏列表" else "从手机相册导入照片，开启 3D 照片墙与特效创作",
+            text = when (filter) {
+                ExhibitionFilter.FX_ONLY -> "打开任意作品点击「制作特效」，即可保存你的独家艺术大作"
+                ExhibitionFilter.FAVORITES -> "点击任意照片右上角红心即可收入私藏列表"
+                ExhibitionFilter.ALL -> "从手机相册导入照片，开启 3D 照片墙与特效创作"
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = MuseumSlate
         )
         Spacer(modifier = Modifier.height(20.dp))
         Surface(
-            onClick = if (favoritesOnly) onClearFilter else onImport,
+            onClick = if (filter != ExhibitionFilter.ALL) onResetFilter else onImport,
             shape = RoundedCornerShape(50),
             color = MuseumInk,
             border = BorderStroke(1.dp, MuseumHairline),
             modifier = Modifier.minimumInteractiveComponentSize()
         ) {
             Text(
-                text = if (favoritesOnly) "查看全部展品" else "从相册导入照片",
+                text = if (filter != ExhibitionFilter.ALL) "返回全部馆藏" else "从相册导入照片",
                 style = MaterialTheme.typography.labelLarge,
                 color = MuseumPaper,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)

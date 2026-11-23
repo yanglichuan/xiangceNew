@@ -41,6 +41,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -59,7 +62,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import com.example.data.local.LocalMediaManager
+import com.example.data.model.ParticleStyle
 import com.example.data.model.PhotoEntity
+import com.example.ui.components.ParticleOverlayCanvas
 import com.example.ui.components.rememberTiltOffset
 import com.example.ui.theme.MuseumBrassGold
 import com.example.ui.theme.MuseumCanvas
@@ -69,6 +74,13 @@ import com.example.ui.theme.MuseumInk
 import com.example.ui.theme.MuseumPaper
 import com.example.ui.theme.MuseumSlate
 import kotlin.math.abs
+import kotlin.math.sin
+
+private enum class CorridorStyle(val label: String) {
+    CURVED_ARC("弧形走廊"),
+    SPIRAL_HELIX("3D 螺旋"),
+    VINYL_RACK("黑胶唱片架")
+}
 
 @Composable
 fun Corridor3DScreen(
@@ -84,38 +96,109 @@ fun Corridor3DScreen(
     val pagerState = rememberPagerState(pageCount = { photos.size })
     val tilt by rememberTiltOffset()
     val density = LocalDensity.current.density
+    var corridorStyle by remember { mutableStateOf(CorridorStyle.CURVED_ARC) }
     val activePhoto = photos[pagerState.currentPage.coerceIn(0, photos.lastIndex)]
 
     Column(
         modifier = modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Corridor 3D Geometry Switcher
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+        ) {
+            CorridorStyle.entries.forEach { style ->
+                val selected = corridorStyle == style
+                Surface(
+                    onClick = { corridorStyle = style },
+                    shape = RoundedCornerShape(50),
+                    color = if (selected) MuseumBrassGold.copy(alpha = 0.20f) else Color.Transparent,
+                    border = BorderStroke(1.dp, if (selected) MuseumBrassGold else MuseumHairline)
+                ) {
+                    Text(
+                        text = style.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (selected) MuseumInk else MuseumSlate,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+            }
+        }
+
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
             contentAlignment = Alignment.Center
         ) {
-            val cardWidth = (maxWidth * 0.68f).coerceIn(220.dp, 360.dp)
+            // Subtle warm museum dust motes floating in background
+            ParticleOverlayCanvas(
+                style = ParticleStyle.DUST_BOKEH,
+                parallaxOffset = tilt,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Ambient spotlight halo behind center card
+            Box(
+                modifier = Modifier
+                    .size(280.dp)
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(MuseumBrassGold.copy(alpha = 0.22f), Color.Transparent)
+                        )
+                    )
+            )
+
+            val cardWidth = (maxWidth * 0.66f).coerceIn(210.dp, 350.dp)
             val horizontalPad = ((maxWidth - cardWidth) / 2f).coerceAtLeast(16.dp)
 
             HorizontalPager(
                 state = pagerState,
                 pageSize = PageSize.Fixed(cardWidth),
                 contentPadding = PaddingValues(horizontal = horizontalPad),
-                pageSpacing = 12.dp,
-                beyondViewportPageCount = 2,
+                pageSpacing = if (corridorStyle == CorridorStyle.VINYL_RACK) (-28).dp else 10.dp,
+                beyondViewportPageCount = 3,
                 modifier = Modifier.fillMaxSize()
             ) { page ->
                 val photo = photos[page]
                 val pageOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
                 val absOffset = abs(pageOffset)
 
-                val scale = (1f - absOffset * 0.16f).coerceIn(0.68f, 1f)
-                val rotY = (pageOffset * -28f + tilt.x * 5f).coerceIn(-46f, 46f)
-                val rotX = (tilt.y * -4f).coerceIn(-8f, 8f)
-                val arcDropPx = absOffset * absOffset * 38f * density
-                val curveXShift = -pageOffset * 26f * density
+                val scale: Float
+                val rotY: Float
+                val rotX: Float
+                val rotZ: Float
+                val transY: Float
+                val transX: Float
+                when (corridorStyle) {
+                    CorridorStyle.CURVED_ARC -> {
+                        scale = (1f - absOffset * 0.16f).coerceIn(0.68f, 1f)
+                        rotY = (pageOffset * -28f + tilt.x * 5f).coerceIn(-46f, 46f)
+                        rotX = (tilt.y * -4f).coerceIn(-8f, 8f)
+                        rotZ = 0f
+                        transY = absOffset * absOffset * 38f * density
+                        transX = -pageOffset * 26f * density
+                    }
+                    CorridorStyle.SPIRAL_HELIX -> {
+                        scale = (1f - absOffset * 0.18f).coerceIn(0.64f, 1f)
+                        rotY = (pageOffset * -42f).coerceIn(-68f, 68f)
+                        rotX = (pageOffset * 10f).coerceIn(-20f, 20f)
+                        rotZ = (pageOffset * -8f).coerceIn(-18f, 18f)
+                        transY = sin(pageOffset * 1.1f) * 54f * density
+                        transX = -pageOffset * 32f * density
+                    }
+                    CorridorStyle.VINYL_RACK -> {
+                        scale = (1f - absOffset * 0.12f).coerceIn(0.72f, 1f)
+                        rotY = if (absOffset < 0.15f) 0f else (if (pageOffset > 0) -54f else 54f)
+                        rotX = 0f
+                        rotZ = 0f
+                        transY = absOffset * 14f * density
+                        transX = 0f
+                    }
+                }
                 val itemAlpha = (1f - absOffset * 0.34f).coerceIn(0.32f, 1f)
 
                 Column(
@@ -130,12 +213,12 @@ fun Corridor3DScreen(
                             scaleY = scale
                             rotationY = rotY
                             rotationX = rotX
-                            translationY = arcDropPx
-                            translationX = curveXShift
+                            rotationZ = rotZ
+                            translationY = transY
+                            translationX = transX
                             alpha = itemAlpha
                         }
                 ) {
-                    // Main Museum Framed Artwork
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -192,14 +275,13 @@ fun Corridor3DScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
-                    // Gallery Floor Mirror Reflection
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(0.86f)
-                            .height(42.dp)
-                            .alpha(0.28f * itemAlpha)
+                            .fillMaxWidth(0.84f)
+                            .height(36.dp)
+                            .alpha(0.26f * itemAlpha)
                             .graphicsLayer {
                                 scaleY = -1f
                                 compositingStrategy = CompositingStrategy.Offscreen
@@ -226,7 +308,6 @@ fun Corridor3DScreen(
             }
         }
 
-        // Focused Plaque & Quick Actions
         AnimatedContent(
             targetState = activePhoto,
             transitionSpec = {
@@ -254,7 +335,7 @@ fun Corridor3DScreen(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -317,9 +398,8 @@ fun Corridor3DScreen(
             }
         }
 
-        // Minimalist Gallery Index Dots
         Row(
-            modifier = Modifier.padding(top = 12.dp, bottom = 92.dp),
+            modifier = Modifier.padding(top = 10.dp, bottom = 88.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

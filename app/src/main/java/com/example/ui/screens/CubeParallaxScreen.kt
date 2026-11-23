@@ -14,6 +14,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -55,7 +57,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import com.example.data.local.LocalMediaManager
 import com.example.data.model.PhotoEntity
@@ -64,12 +68,15 @@ import com.example.ui.theme.MuseumBrassGold
 import com.example.ui.theme.MuseumCanvas
 import com.example.ui.theme.MuseumHairline
 import com.example.ui.theme.MuseumInk
+import com.example.ui.theme.MuseumPaper
 import com.example.ui.theme.MuseumSlate
 import com.example.ui.theme.MuseumWarmStone
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 private data class CubeFaceSpec(
@@ -89,6 +96,7 @@ fun CubeParallaxScreen(
 ) {
     if (photos.isEmpty()) return
     val tilt by rememberTiltOffset()
+    var showRingInsteadOfCube by remember { mutableStateOf(false) }
 
     val leftColumn = remember(photos) { photos.filterIndexed { index, _ -> index % 2 == 0 } }
     val rightColumn = remember(photos) { photos.filterIndexed { index, _ -> index % 2 == 1 } }
@@ -96,7 +104,7 @@ fun CubeParallaxScreen(
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 104.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         item(key = "cube_showcase") {
             Column(
@@ -110,26 +118,48 @@ fun CubeParallaxScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "3D 悬浮魔方展柜 · 单指任意旋转",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MuseumSlate
-                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(false to "3D 悬浮魔方", true to "3D 轨道星环").forEach { (isRing, label) ->
+                            val selected = showRingInsteadOfCube == isRing
+                            Surface(
+                                onClick = { showRingInsteadOfCube = isRing },
+                                shape = RoundedCornerShape(50),
+                                color = if (selected) MuseumInk else MuseumCanvas,
+                                border = BorderStroke(1.dp, if (selected) MuseumInk else MuseumHairline)
+                            ) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (selected) MuseumPaper else MuseumSlate,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+
                     Icon(
                         imageVector = Icons.Filled.RotateRight,
                         contentDescription = "3D 旋转提示",
                         tint = MuseumBrassGold,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Interactive3DCubeShowcase(
-                    photos = photos,
-                    mediaManager = mediaManager,
-                    onFaceClick = onOpenDetail
-                )
+                if (!showRingInsteadOfCube) {
+                    Interactive3DCubeShowcase(
+                        photos = photos,
+                        mediaManager = mediaManager,
+                        onFaceClick = onOpenDetail
+                    )
+                } else {
+                    Interactive3DOrbitRingShowcase(
+                        photos = photos,
+                        mediaManager = mediaManager,
+                        onCardClick = onOpenDetail
+                    )
+                }
             }
         }
 
@@ -199,6 +229,116 @@ fun CubeParallaxScreen(
 }
 
 @Composable
+private fun Interactive3DOrbitRingShowcase(
+    photos: List<PhotoEntity>,
+    mediaManager: LocalMediaManager,
+    onCardClick: (Long) -> Unit
+) {
+    val ringPhotos = remember(photos) { photos.take(8) }
+    var orbitAngle by remember { mutableFloatStateOf(0f) }
+    var tiltAngle by remember { mutableFloatStateOf(12f) }
+    var isDragging by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isDragging) {
+        if (!isDragging) {
+            var lastNanos = 0L
+            while (true) {
+                withFrameNanos { nanos ->
+                    if (lastNanos != 0L) {
+                        val dt = (nanos - lastNanos) / 1_000_000_000f
+                        orbitAngle = (orbitAngle + dt * 24f) % 360f
+                    }
+                    lastNanos = nanos
+                }
+            }
+        }
+    }
+
+    val density = LocalDensity.current.density
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(276.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(
+                Brush.radialGradient(
+                    colors = listOf(Color(0xFF1E1D1B), Color(0xFF101012))
+                )
+            )
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { isDragging = true },
+                    onDragEnd = { isDragging = false },
+                    onDragCancel = { isDragging = false }
+                ) { change, dragAmount ->
+                    change.consume()
+                    orbitAngle += dragAmount.x * 0.45f
+                    tiltAngle = (tiltAngle - dragAmount.y * 0.25f).coerceIn(-25f, 35f)
+                }
+            }
+            .testTag("orbit_ring_3d_canvas"),
+        contentAlignment = Alignment.Center
+    ) {
+        val radiusX = with(LocalDensity.current) { (maxWidth * 0.34f).toPx() }
+        val radiusY = with(LocalDensity.current) { 36.dp.toPx() } * (tiltAngle / 18f)
+
+        // Glowing central brass ring guide
+        Box(
+            modifier = Modifier
+                .size(92.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(MuseumBrassGold.copy(alpha = 0.28f), Color.Transparent)
+                    )
+                )
+        )
+
+        ringPhotos.forEachIndexed { idx, photo ->
+            val thetaDeg = orbitAngle + idx * (360f / ringPhotos.size)
+            val thetaRad = thetaDeg * (PI / 180.0)
+            val sinT = sin(thetaRad).toFloat()
+            val cosT = cos(thetaRad).toFloat() // 1 = front, -1 = back
+
+            val xOff = sinT * radiusX
+            val yOff = cosT * radiusY
+            val depthScale = 0.56f + (cosT + 1f) * 0.28f
+            val cardAlpha = (0.36f + (cosT + 1f) * 0.32f).coerceIn(0.32f, 1f)
+
+            Surface(
+                modifier = Modifier
+                    .offset { IntOffset(xOff.roundToInt(), yOff.roundToInt()) }
+                    .size(96.dp, 124.dp)
+                    .zIndex((cosT + 1f) * 10f)
+                    .graphicsLayer {
+                        cameraDistance = 14f * density
+                        scaleX = depthScale
+                        scaleY = depthScale
+                        rotationY = -sinT * 38f
+                        alpha = cardAlpha
+                    }
+                    .clickable { onCardClick(photo.id) },
+                shape = RoundedCornerShape(10.dp),
+                color = MuseumCanvas,
+                shadowElevation = 10.dp,
+                border = BorderStroke(1.dp, MuseumBrassGold.copy(alpha = 0.6f))
+            ) {
+                AsyncImage(
+                    model = mediaManager.resolveCoilModel(photo),
+                    contentDescription = photo.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(3.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun Interactive3DCubeShowcase(
     photos: List<PhotoEntity>,
     mediaManager: LocalMediaManager,
@@ -241,7 +381,6 @@ private fun Interactive3DCubeShowcase(
         }
     }
 
-    // Compute 3D face normals after global rotY and rotX to sort back-to-front
     val radY = Math.toRadians(rotY.toDouble())
     val radX = Math.toRadians(rotX.toDouble())
     val cosY = cos(radY).toFloat()
@@ -301,7 +440,6 @@ private fun Interactive3DCubeShowcase(
                 .testTag("cube_3d_canvas"),
             contentAlignment = Alignment.Center
         ) {
-            // Pedestal soft shadow
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -338,7 +476,6 @@ private fun Interactive3DCubeShowcase(
                         native.save()
                         native.concat(matrix)
 
-                        // White museum card backing
                         native.drawRoundRect(
                             RectF(0f, 0f, cubeSide, cubeSide),
                             14f, 14f,
@@ -355,7 +492,6 @@ private fun Interactive3DCubeShowcase(
                             )
                         }
 
-                        // Subtle directional face shading for 3D depth
                         val shadeAlpha = ((1f - face.normalZ.coerceIn(0f, 1f)) * 90f).toInt().coerceIn(0, 110)
                         if (shadeAlpha > 4) {
                             shadePaint.color = android.graphics.Color.argb(shadeAlpha, 20, 20, 19)

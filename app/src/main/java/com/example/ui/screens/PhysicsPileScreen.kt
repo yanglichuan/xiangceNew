@@ -1,12 +1,14 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,11 +18,12 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.GridOn
-import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -36,8 +39,10 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -54,6 +59,7 @@ import com.example.data.local.LocalMediaManager
 import com.example.data.model.PhotoEntity
 import com.example.domain.engine.Physics2DEngine
 import com.example.domain.engine.PhysicsCardBody
+import com.example.domain.engine.PhysicsMode
 import com.example.ui.components.rememberTiltOffset
 import com.example.ui.theme.MuseumBrassGold
 import com.example.ui.theme.MuseumCanvas
@@ -74,11 +80,12 @@ fun PhysicsPileScreen(
     val engine = remember { Physics2DEngine() }
     var bodies by remember { mutableStateOf<List<PhysicsCardBody>>(emptyList()) }
     var boxSize by remember { mutableStateOf(IntSize.Zero) }
-    var zeroGravity by remember { mutableStateOf(false) }
+    var physicsMode by remember { mutableStateOf(PhysicsMode.GRAVITY) }
+    var vortexTouch by remember { mutableStateOf<Offset?>(null) }
 
     val tilt by rememberTiltOffset()
     val density = LocalDensity.current
-    val cardBaseWidthPx = with(density) { 126.dp.toPx() }
+    val cardBaseWidthPx = with(density) { 114.dp.toPx() }
     val photoMap = remember(photos) { photos.associateBy { it.id } }
 
     LaunchedEffect(photos, boxSize) {
@@ -92,7 +99,7 @@ fun PhysicsPileScreen(
         }
     }
 
-    LaunchedEffect(boxSize, zeroGravity) {
+    LaunchedEffect(boxSize, physicsMode) {
         if (boxSize.width <= 0 || boxSize.height <= 0) return@LaunchedEffect
         var lastNanos = 0L
         while (true) {
@@ -105,7 +112,7 @@ fun PhysicsPileScreen(
                         dtSec = dt,
                         gravityX = gx,
                         gravityY = gy,
-                        zeroGravity = zeroGravity
+                        mode = physicsMode
                     )
                 }
                 lastNanos = nanos
@@ -114,106 +121,109 @@ fun PhysicsPileScreen(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        // Physics Control Bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(
-                onClick = { engine.impulseBurst() },
-                shape = RoundedCornerShape(50),
-                color = MuseumInk,
-                modifier = Modifier
-                    .minimumInteractiveComponentSize()
-                    .testTag("physics_burst_btn")
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            item {
+                Surface(
+                    onClick = { engine.impulseBurst() },
+                    shape = RoundedCornerShape(50),
+                    color = MuseumInk,
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .testTag("physics_burst_btn")
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Bolt,
-                        contentDescription = "脉冲弹跳",
-                        tint = MuseumBrassGold,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(5.dp))
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Bolt,
+                            contentDescription = "脉冲弹跳",
+                            tint = MuseumBrassGold,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = "能量弹跳",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MuseumPaper
+                        )
+                    }
+                }
+            }
+
+            items(PhysicsMode.entries) { mode ->
+                val active = physicsMode == mode
+                Surface(
+                    onClick = {
+                        physicsMode = mode
+                        if (mode != PhysicsMode.VORTEX) {
+                            vortexTouch = null
+                            engine.setVortexAnchor(null, null)
+                        }
+                    },
+                    shape = RoundedCornerShape(50),
+                    color = if (active) MuseumBrassGold else MuseumCanvas,
+                    border = BorderStroke(1.dp, if (active) MuseumBrassGold else MuseumHairline),
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .testTag("physics_mode_${mode.name}")
+                ) {
                     Text(
-                        text = "能量弹跳",
+                        text = mode.label,
                         style = MaterialTheme.typography.labelLarge,
-                        color = MuseumPaper
+                        color = MuseumInk,
+                        modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp)
                     )
                 }
             }
 
-            Surface(
-                onClick = { zeroGravity = !zeroGravity },
-                shape = RoundedCornerShape(50),
-                color = if (zeroGravity) MuseumBrassGold else MuseumCanvas,
-                border = BorderStroke(1.dp, if (zeroGravity) MuseumBrassGold else MuseumHairline),
-                modifier = Modifier
-                    .minimumInteractiveComponentSize()
-                    .testTag("physics_zero_g_btn")
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            item {
+                Surface(
+                    onClick = { engine.tidyStack() },
+                    shape = RoundedCornerShape(50),
+                    color = MuseumCanvas,
+                    border = BorderStroke(1.dp, MuseumHairline),
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .testTag("physics_tidy_btn")
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Public,
-                        contentDescription = "零重力模式",
-                        tint = if (zeroGravity) MuseumInk else MuseumSlate,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(5.dp))
-                    Text(
-                        text = if (zeroGravity) "失重漂浮" else "重力模式",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MuseumInk
-                    )
-                }
-            }
-
-            Surface(
-                onClick = { engine.tidyStack() },
-                shape = RoundedCornerShape(50),
-                color = MuseumCanvas,
-                border = BorderStroke(1.dp, MuseumHairline),
-                modifier = Modifier
-                    .minimumInteractiveComponentSize()
-                    .testTag("physics_tidy_btn")
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.GridOn,
-                        contentDescription = "整齐整理",
-                        tint = MuseumInk,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "整理",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MuseumInk
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.GridOn,
+                            contentDescription = "整齐整理",
+                            tint = MuseumInk,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "整理",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MuseumInk
+                        )
+                    }
                 }
             }
         }
 
         Text(
-            text = "按住任意照片自由抛掷碰撞，轻点卡片立即展开",
+            text = if (physicsMode == PhysicsMode.VORTEX) {
+                "磁力漩涡已开启：在画布任意位置滑动，吸附照片围绕指尖旋转"
+            } else {
+                "按住任意照片自由抛掷碰撞，轻点卡片立即展开"
+            },
             style = MaterialTheme.typography.labelSmall,
             color = MuseumSlate,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
         )
 
-        // Interactive Physics Arena
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -222,11 +232,52 @@ fun PhysicsPileScreen(
                 .clip(RoundedCornerShape(24.dp))
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(MuseumWarmStone.copy(alpha = 0.7f), Color(0xFFE5DFD3))
+                        colors = listOf(MuseumWarmStone.copy(alpha = 0.72f), Color(0xFFE5DFD3))
                     )
                 )
                 .onSizeChanged { boxSize = it }
+                .pointerInput(physicsMode) {
+                    if (physicsMode == PhysicsMode.VORTEX) {
+                        detectDragGestures(
+                            onDragStart = { pos ->
+                                vortexTouch = pos
+                                engine.setVortexAnchor(pos.x, pos.y)
+                            },
+                            onDragEnd = {
+                                vortexTouch = null
+                                engine.setVortexAnchor(null, null)
+                            },
+                            onDragCancel = {
+                                vortexTouch = null
+                                engine.setVortexAnchor(null, null)
+                            }
+                        ) { change, _ ->
+                            change.consume()
+                            vortexTouch = change.position
+                            engine.setVortexAnchor(change.position.x, change.position.y)
+                        }
+                    }
+                }
         ) {
+            // Vortex Orbital Indicator Rings
+            if (physicsMode == PhysicsMode.VORTEX && boxSize.width > 0) {
+                val center = vortexTouch ?: Offset(boxSize.width * 0.5f, boxSize.height * 0.46f)
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    drawCircle(
+                        color = MuseumBrassGold.copy(alpha = 0.30f),
+                        radius = 120f,
+                        center = center,
+                        style = Stroke(width = 2.5f)
+                    )
+                    drawCircle(
+                        color = MuseumBrassGold.copy(alpha = 0.16f),
+                        radius = 220f,
+                        center = center,
+                        style = Stroke(width = 2f)
+                    )
+                }
+            }
+
             bodies.forEach { body ->
                 val photo = photoMap[body.photoId] ?: return@forEach
                 val wDp = with(density) { body.width.toDp() }
@@ -264,7 +315,7 @@ fun PhysicsPileScreen(
                     shadowElevation = 8.dp,
                     border = BorderStroke(1.dp, MuseumHairline)
                 ) {
-                    Column(modifier = Modifier.fillMaxSize().padding(6.dp)) {
+                    Column(modifier = Modifier.fillMaxSize().padding(5.dp)) {
                         AsyncImage(
                             model = mediaManager.resolveCoilModel(photo),
                             contentDescription = photo.title,
@@ -274,7 +325,7 @@ fun PhysicsPileScreen(
                                 .weight(1f)
                                 .clip(RoundedCornerShape(6.dp))
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(3.dp))
                         Text(
                             text = photo.title.substringBefore("·").trim(),
                             style = MaterialTheme.typography.labelSmall,

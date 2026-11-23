@@ -9,6 +9,7 @@ import com.example.data.AtelierContainer
 import com.example.data.model.ArtFilter
 import com.example.data.model.EffectConfig
 import com.example.data.model.FrameStyle
+import com.example.data.model.FxPreset
 import com.example.data.model.ParticleStyle
 import com.example.data.model.PhotoEntity
 import com.example.data.model.PlacedSticker
@@ -82,6 +83,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(activeTab = tab) }
     }
 
+    fun applyPreset(preset: FxPreset) {
+        _uiState.update { it.copy(config = preset.config) }
+        schedulePreviewRender()
+    }
+
     fun selectFilter(filter: ArtFilter) {
         updateConfig { it.copy(filter = filter) }
     }
@@ -91,7 +97,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setParallaxDepth(value: Float) {
-        updateConfig { it.copy(parallaxDepth = value.coerceIn(0f, 1f)) }
+        _uiState.update { it.copy(config = it.config.copy(parallaxDepth = value.coerceIn(0f, 1f))) }
+    }
+
+    fun toggleHologramFoil() {
+        _uiState.update { it.copy(config = it.config.copy(hologramFoil = !it.config.hologramFoil)) }
     }
 
     fun selectParticle(style: ParticleStyle) {
@@ -120,12 +130,6 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setLuminousText(text: String) {
         _uiState.update { it.copy(config = it.config.copy(luminousText = text)) }
-    }
-
-    fun setLuminousTextNormY(normY: Float) {
-        _uiState.update {
-            it.copy(config = it.config.copy(luminousTextNormY = normY.coerceIn(0.15f, 0.88f)))
-        }
     }
 
     fun toggleLuminousGlow() {
@@ -245,7 +249,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val cfg = _uiState.value.config
         renderJob?.cancel()
         renderJob = viewModelScope.launch {
-            delay(55L)
+            delay(45L)
             _uiState.update { it.copy(isRenderingPreview = true) }
             val result = EffectProcessor.processBitmap(base, cfg)
             _uiState.update { it.copy(previewBitmap = result, isRenderingPreview = false) }

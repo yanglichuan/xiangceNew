@@ -7,9 +7,11 @@ import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
+import com.example.data.model.CollageLayout
 import com.example.data.model.EffectConfig
 import com.example.data.model.FrameStyle
 import com.example.data.model.ParticleStyle
@@ -34,10 +36,11 @@ object ArtworkExporter {
         val imgW = filtered.width
         val imgH = filtered.height
 
-        // Apply static particle light/bokeh glow baked onto the photo surface
         bakeParticlesOnPhoto(filtered, config.particleStyle)
+        if (config.hologramFoil) {
+            bakeHologramSheen(filtered)
+        }
 
-        // Draw stickers and luminous text onto the photo layer
         val photoCanvas = Canvas(filtered)
         config.stickers.forEach { sticker ->
             drawSticker(photoCanvas, sticker, imgW.toFloat(), imgH.toFloat())
@@ -53,12 +56,160 @@ object ArtworkExporter {
             )
         }
 
-        // Wrap in Museum Frame Matting if selected
         val framed = applyFrameMatting(filtered, config.frameStyle, title, config.filter.tagCode)
         if (framed != filtered) {
             filtered.recycle()
         }
         framed
+    }
+
+    suspend fun renderCollagePoster(
+        bitmaps: List<Bitmap>,
+        layout: CollageLayout,
+        title: String,
+        darkTheme: Boolean
+    ): Bitmap = withContext(Dispatchers.Default) {
+        val outW = 1200
+        val outH = 1600
+        val out = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+
+        val bgColor = if (darkTheme) Color.parseColor("#111113") else Color.parseColor("#F8F6F1")
+        val fgColor = if (darkTheme) Color.parseColor("#F4F1EA") else Color.parseColor("#141413")
+        val accentColor = Color.parseColor("#D4AF37")
+        canvas.drawColor(bgColor)
+
+        val margin = 72f
+        val gap = 26f
+        val contentTop = 180f
+        val contentBottom = outH - 190f
+        val contentW = outW - margin * 2
+        val contentH = contentBottom - contentTop
+
+        val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = accentColor
+            textSize = 26f
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        }
+        canvas.drawText("ATELIER CURATED POSTER · ${layout.displayName}", outW / 2f, 96f, headerPaint)
+
+        val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = fgColor
+            textSize = 52f
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
+        }
+        canvas.drawText(title.ifBlank { "EXHIBITION SERIES" }, outW / 2f, 152f, titlePaint)
+
+        when (layout) {
+            CollageLayout.TRIPTYCH -> {
+                val slotH = (contentH - gap * 2) / 3f
+                for (i in 0 until 3) {
+                    val bmp = bitmaps[i % bitmaps.size]
+                    val top = contentTop + i * (slotH + gap)
+                    drawCenterCropped(canvas, bmp, RectF(margin, top, margin + contentW, top + slotH))
+                }
+            }
+            CollageLayout.GRID_2X2 -> {
+                val slotW = (contentW - gap) / 2f
+                val slotH = (contentH - gap) / 2f
+                for (i in 0 until 4) {
+                    val bmp = bitmaps[i % bitmaps.size]
+                    val col = i % 2
+                    val row = i / 2
+                    val left = margin + col * (slotW + gap)
+                    val top = contentTop + row * (slotH + gap)
+                    drawCenterCropped(canvas, bmp, RectF(left, top, left + slotW, top + slotH))
+                }
+            }
+            CollageLayout.FILM_STRIP -> {
+                val stripPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#141416") }
+                canvas.drawRoundRect(
+                    RectF(margin - 18f, contentTop - 20f, outW - margin + 18f, contentBottom + 20f),
+                    18f, 18f, stripPaint
+                )
+                val slotH = (contentH - gap * 2) / 3f
+                for (i in 0 until 3) {
+                    val bmp = bitmaps[i % bitmaps.size]
+                    val top = contentTop + i * (slotH + gap)
+                    drawCenterCropped(canvas, bmp, RectF(margin + 44f, top, outW - margin - 44f, top + slotH))
+                }
+                val holePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#EFECE6") }
+                var hy = contentTop
+                while (hy < contentBottom) {
+                    canvas.drawRoundRect(margin, hy, margin + 22f, hy + 34f, 4f, 4f, holePaint)
+                    canvas.drawRoundRect(outW - margin - 22f, hy, outW - margin, hy + 34f, 4f, 4f, holePaint)
+                    hy += 66f
+                }
+            }
+            CollageLayout.POLAROID_STACK -> {
+                val cardW = contentW * 0.78f
+                val cardH = contentH * 0.56f
+                val frames = listOf(
+                    Triple(margin + 20f, contentTop + 30f, -6f),
+                    Triple(outW - margin - cardW - 20f, contentBottom - cardH - 30f, 5.5f)
+                )
+                val cardBg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                    setShadowLayer(24f, 0f, 12f, Color.argb(90, 0, 0, 0))
+                }
+                frames.forEachIndexed { idx, (fx, fy, rot) ->
+                    val bmp = bitmaps[idx % bitmaps.size]
+                    canvas.save()
+                    canvas.rotate(rot, fx + cardW / 2f, fy + cardH / 2f)
+                    canvas.drawRoundRect(RectF(fx, fy, fx + cardW, fy + cardH), 12f, 12f, cardBg)
+                    drawCenterCropped(canvas, bmp, RectF(fx + 28f, fy + 28f, fx + cardW - 28f, fy + cardH - 110f))
+                    canvas.restore()
+                }
+            }
+        }
+
+        val footerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = fgColor
+            alpha = 180
+            textSize = 24f
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
+        }
+        canvas.drawText("ARCHIVAL EDITION · ATELIER MUSEUM GALLERY", outW / 2f, outH - 90f, footerPaint)
+        out
+    }
+
+    private fun drawCenterCropped(canvas: Canvas, bmp: Bitmap, dst: RectF) {
+        val dstRatio = dst.width() / max(1f, dst.height())
+        val srcRatio = bmp.width.toFloat() / max(1, bmp.height)
+        val srcRect = if (srcRatio > dstRatio) {
+            val cropW = (bmp.height * dstRatio).toInt()
+            val x = (bmp.width - cropW) / 2
+            Rect(x, 0, x + cropW, bmp.height)
+        } else {
+            val cropH = (bmp.width / dstRatio).toInt()
+            val y = (bmp.height - cropH) / 2
+            Rect(0, y, bmp.width, y + cropH)
+        }
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        canvas.drawBitmap(bmp, srcRect, dst, paint)
+    }
+
+    private fun bakeHologramSheen(bitmap: Bitmap) {
+        val canvas = Canvas(bitmap)
+        val w = bitmap.width.toFloat()
+        val h = bitmap.height.toFloat()
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(
+                0f, 0f, w, h,
+                intArrayOf(
+                    Color.argb(65, 95, 240, 255),
+                    Color.argb(45, 255, 195, 90),
+                    Color.argb(65, 245, 110, 225),
+                    Color.argb(55, 115, 255, 210)
+                ),
+                floatArrayOf(0f, 0.35f, 0.7f, 1f),
+                Shader.TileMode.CLAMP
+            )
+        }
+        canvas.drawRect(0f, 0f, w, h, paint)
     }
 
     private fun bakeParticlesOnPhoto(bitmap: Bitmap, style: ParticleStyle) {
@@ -116,6 +267,39 @@ object ArtworkExporter {
                     )
                 }
                 canvas.drawRect(0f, 0f, w, h, prismPaint)
+            }
+            ParticleStyle.MATRIX_RAIN -> {
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    strokeCap = Paint.Cap.ROUND
+                }
+                repeat(28) {
+                    val x = rng.nextFloat() * w
+                    val y = rng.nextFloat() * h * 0.8f
+                    val len = h * (0.08f + rng.nextFloat() * 0.14f)
+                    paint.strokeWidth = max(2f, min(w, h) * 0.005f)
+                    paint.color = if (it % 2 == 0) Color.argb(135, 90, 245, 255) else Color.argb(135, 212, 175, 55)
+                    canvas.drawLine(x, y, x, y + len, paint)
+                }
+            }
+            ParticleStyle.SNOW_PETALS -> {
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+                repeat(30) {
+                    val cx = rng.nextFloat() * w
+                    val cy = rng.nextFloat() * h
+                    val r = min(w, h) * (0.008f + rng.nextFloat() * 0.016f)
+                    paint.color = if (it % 3 == 0) Color.argb(150, 255, 200, 215) else Color.argb(175, 255, 252, 245)
+                    canvas.drawCircle(cx, cy, r, paint)
+                }
+            }
+            ParticleStyle.HEARTBEAT_PULSE -> {
+                val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    setStyle(Paint.Style.STROKE)
+                    strokeWidth = max(3f, min(w, h) * 0.008f)
+                    color = Color.argb(115, 212, 175, 55)
+                }
+                canvas.drawCircle(w / 2f, h / 2f, min(w, h) * 0.34f, ringPaint)
+                ringPaint.color = Color.argb(85, 255, 110, 175)
+                canvas.drawCircle(w / 2f, h / 2f, min(w, h) * 0.44f, ringPaint)
             }
             ParticleStyle.NONE -> Unit
         }
@@ -303,7 +487,6 @@ object ArtworkExporter {
                 val out = Bitmap.createBitmap(pw + pad * 2, ph + pad + bottomExtra, Bitmap.Config.ARGB_8888)
                 val c = Canvas(out)
                 c.drawColor(Color.parseColor("#F8F6F1"))
-                // Subtle hairline inner mat
                 val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = Color.parseColor("#CFC8BA")
                     style = Paint.Style.STROKE

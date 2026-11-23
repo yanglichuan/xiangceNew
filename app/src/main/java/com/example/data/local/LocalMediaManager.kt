@@ -167,10 +167,199 @@ class LocalMediaManager(private val context: Context) {
             bmp.recycle()
         }
 
+        val cyberFile = File(mediaDir, "curated_cyber_grid.png")
+        if (!cyberFile.exists()) {
+            val bmp = renderCyberGridPrint(1080, 810)
+            FileOutputStream(cyberFile).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bmp.recycle()
+        }
+
+        val cyanotypeFile = File(mediaDir, "curated_cyanotype.png")
+        if (!cyanotypeFile.exists()) {
+            val bmp = renderCyanotypeBotanicalPrint(900, 1200)
+            FileOutputStream(cyanotypeFile).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bmp.recycle()
+        }
+
+        val silkFile = File(mediaDir, "curated_silk_wave.png")
+        if (!silkFile.exists()) {
+            val bmp = renderFluidSilkPrint(900, 1200)
+            FileOutputStream(silkFile).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bmp.recycle()
+        }
+
+        val monolithFile = File(mediaDir, "curated_noir_monolith.png")
+        if (!monolithFile.exists()) {
+            val bmp = renderNoirMonolithPrint(1080, 1080)
+            FileOutputStream(monolithFile).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bmp.recycle()
+        }
+
         listOf(
             bauhausFile.absolutePath to 0.75f,
-            prismFile.absolutePath to 1.0f
+            prismFile.absolutePath to 1.0f,
+            cyberFile.absolutePath to 1.33f,
+            cyanotypeFile.absolutePath to 0.75f,
+            silkFile.absolutePath to 0.75f,
+            monolithFile.absolutePath to 1.0f
         )
+    }
+
+    private fun renderCyberGridPrint(w: Int, h: Int): Bitmap {
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        val skyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(
+                0f, 0f, 0f, h * 0.58f,
+                intArrayOf(Color.parseColor("#0B0C1C"), Color.parseColor("#2B124C"), Color.parseColor("#B8296B")),
+                floatArrayOf(0f, 0.55f, 1f),
+                Shader.TileMode.CLAMP
+            )
+        }
+        canvas.drawRect(0f, 0f, w.toFloat(), h * 0.58f, skyPaint)
+
+        val sunPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(
+                0f, h * 0.14f, 0f, h * 0.58f,
+                Color.parseColor("#FFE47A"), Color.parseColor("#FF4E78"),
+                Shader.TileMode.CLAMP
+            )
+        }
+        canvas.drawCircle(w * 0.5f, h * 0.42f, h * 0.22f, sunPaint)
+
+        val groundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#0B0D18") }
+        canvas.drawRect(0f, h * 0.58f, w.toFloat(), h.toFloat(), groundPaint)
+
+        val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#47E5FF")
+            strokeWidth = 2.5f
+        }
+        val horizonY = h * 0.58f
+        for (i in -8..8) {
+            canvas.drawLine(w * 0.5f + i * 28f, horizonY, w * 0.5f + i * 165f, h.toFloat(), gridPaint)
+        }
+        for (j in 0..8) {
+            val t = (j / 8f)
+            val y = horizonY + t * t * (h - horizonY)
+            canvas.drawLine(0f, y, w.toFloat(), y, gridPaint)
+        }
+        addSubtlePaperGrain(bmp, 8)
+        return bmp
+    }
+
+    private fun renderCyanotypeBotanicalPrint(w: Int, h: Int): Bitmap {
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = RadialGradient(
+                w * 0.5f, h * 0.48f, h * 0.72f,
+                intArrayOf(Color.parseColor("#1D4E78"), Color.parseColor("#102B48")),
+                null,
+                Shader.TileMode.CLAMP
+            )
+        }
+        canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), bgPaint)
+
+        val leafPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(215, 240, 245, 250)
+            style = Paint.Style.FILL
+        }
+        val stemPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(230, 245, 248, 252)
+            strokeWidth = 6f
+            style = Paint.Style.STROKE
+        }
+        canvas.drawLine(w * 0.5f, h * 0.86f, w * 0.48f, h * 0.16f, stemPaint)
+        for (i in 0..11) {
+            val py = h * (0.78f - i * 0.052f)
+            val spread = w * (0.24f - i * 0.013f)
+            val dir = if (i % 2 == 0) 1f else -1f
+            canvas.save()
+            canvas.translate(w * 0.49f, py)
+            canvas.rotate(dir * 34f)
+            canvas.drawOval(0f, -22f, dir * spread, 22f, leafPaint)
+            canvas.restore()
+        }
+        addSubtlePaperGrain(bmp, 12)
+        return bmp
+    }
+
+    private fun renderFluidSilkPrint(w: Int, h: Int): Bitmap {
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        canvas.drawColor(Color.parseColor("#171514"))
+
+        val colors = intArrayOf(
+            Color.parseColor("#D4AF37"),
+            Color.parseColor("#C84B31"),
+            Color.parseColor("#EAE2D3")
+        )
+        for (layer in 0 until 3) {
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = colors[layer]
+                alpha = 185 - layer * 25
+            }
+            val path = Path().apply {
+                moveTo(0f, h * (0.28f + layer * 0.16f))
+                cubicTo(
+                    w * 0.32f, h * (0.12f + layer * 0.18f),
+                    w * 0.68f, h * (0.58f - layer * 0.08f),
+                    w.toFloat(), h * (0.34f + layer * 0.15f)
+                )
+                lineTo(w.toFloat(), h.toFloat())
+                lineTo(0f, h.toFloat())
+                close()
+            }
+            canvas.drawPath(path, paint)
+        }
+        addSubtlePaperGrain(bmp, 10)
+        return bmp
+    }
+
+    private fun renderNoirMonolithPrint(w: Int, h: Int): Bitmap {
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(
+                0f, 0f, w.toFloat(), h.toFloat(),
+                Color.parseColor("#EFECE6"), Color.parseColor("#CFC9BE"),
+                Shader.TileMode.CLAMP
+            )
+        }
+        canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), bgPaint)
+
+        val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(
+                w * 0.42f, h * 0.78f, w * 0.92f, h * 0.92f,
+                Color.argb(130, 20, 20, 19), Color.TRANSPARENT,
+                Shader.TileMode.CLAMP
+            )
+        }
+        val shadowPath = Path().apply {
+            moveTo(w * 0.36f, h * 0.78f)
+            lineTo(w * 0.58f, h * 0.78f)
+            lineTo(w * 0.92f, h * 0.96f)
+            lineTo(w * 0.62f, h * 0.96f)
+            close()
+        }
+        canvas.drawPath(shadowPath, shadowPaint)
+
+        val monoPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(
+                w * 0.34f, h * 0.16f, w * 0.60f, h * 0.78f,
+                Color.parseColor("#2A2A28"), Color.parseColor("#111110"),
+                Shader.TileMode.CLAMP
+            )
+        }
+        canvas.drawRect(w * 0.34f, h * 0.16f, w * 0.58f, h * 0.78f, monoPaint)
+
+        val goldLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#D4AF37")
+            strokeWidth = 6f
+        }
+        canvas.drawLine(w * 0.34f, h * 0.16f, w * 0.34f, h * 0.78f, goldLine)
+        addSubtlePaperGrain(bmp, 11)
+        return bmp
     }
 
     private fun renderBauhausExhibitionPrint(w: Int, h: Int): Bitmap {

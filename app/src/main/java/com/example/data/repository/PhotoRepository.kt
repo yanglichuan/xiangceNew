@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import com.example.data.local.LocalMediaManager
 import com.example.data.local.PhotoDao
+import com.example.data.model.CollageLayout
 import com.example.data.model.PhotoEntity
 import com.example.data.model.PhotoSourceType
 import kotlinx.coroutines.flow.Flow
@@ -20,8 +21,7 @@ class PhotoRepository(
     suspend fun getPhoto(id: Long): PhotoEntity? = photoDao.getPhotoById(id)
 
     suspend fun seedCuratedExhibitionIfEmpty() {
-        if (photoDao.countPhotos() > 0) return
-
+        val existingCodes = photoDao.getAllCatalogCodes().toSet()
         val prints = mediaManager.createProceduralExhibitionPrints()
         val now = System.currentTimeMillis()
         val curated = listOf(
@@ -33,7 +33,7 @@ class PhotoRepository(
                 drawableName = "img_gallery_arch",
                 aspectRatio = 0.75f,
                 isFavorite = true,
-                createdAt = now - 600_000L
+                createdAt = now - 1_000_000L
             ),
             PhotoEntity(
                 title = "晨雾松林 · Dawn Mist",
@@ -43,7 +43,7 @@ class PhotoRepository(
                 drawableName = "img_gallery_mist",
                 aspectRatio = 0.75f,
                 isFavorite = true,
-                createdAt = now - 500_000L
+                createdAt = now - 900_000L
             ),
             PhotoEntity(
                 title = "雨夜霓虹 · Shibuya Rain",
@@ -53,7 +53,7 @@ class PhotoRepository(
                 drawableName = "img_gallery_neon",
                 aspectRatio = 1.33f,
                 isFavorite = false,
-                createdAt = now - 400_000L
+                createdAt = now - 800_000L
             ),
             PhotoEntity(
                 title = "金沙弧线 · Sahara Ridge",
@@ -63,7 +63,7 @@ class PhotoRepository(
                 drawableName = "img_gallery_dunes",
                 aspectRatio = 1.0f,
                 isFavorite = false,
-                createdAt = now - 300_000L
+                createdAt = now - 700_000L
             ),
             PhotoEntity(
                 title = "包豪斯几何 · Study VII",
@@ -73,7 +73,7 @@ class PhotoRepository(
                 filePath = prints[0].first,
                 aspectRatio = prints[0].second,
                 isFavorite = false,
-                createdAt = now - 200_000L
+                createdAt = now - 600_000L
             ),
             PhotoEntity(
                 title = "极光波纹 · Prism Horizon",
@@ -83,10 +83,53 @@ class PhotoRepository(
                 filePath = prints[1].first,
                 aspectRatio = prints[1].second,
                 isFavorite = true,
+                createdAt = now - 500_000L
+            ),
+            PhotoEntity(
+                title = "赛博落日 · Synth Horizon",
+                catalogCode = "NO. 07 · SYNTHWAVE 84",
+                exifSummary = "NEON VECTOR · DIGITAL EDITION",
+                sourceType = PhotoSourceType.LOCAL_FILE,
+                filePath = prints[2].first,
+                aspectRatio = prints[2].second,
+                isFavorite = false,
+                createdAt = now - 400_000L
+            ),
+            PhotoEntity(
+                title = "蓝晒植物志 · Cyanotype",
+                catalogCode = "NO. 08 · PRUSSIAN BLUE",
+                exifSummary = "BOTANICAL PRINT · HAND COATED",
+                sourceType = PhotoSourceType.LOCAL_FILE,
+                filePath = prints[3].first,
+                aspectRatio = prints[3].second,
+                isFavorite = false,
+                createdAt = now - 300_000L
+            ),
+            PhotoEntity(
+                title = "流金丝绸 · Silk Wave",
+                catalogCode = "NO. 09 · KINETIC SILK",
+                exifSummary = "ABSTRACT FLUID · GOLD FOIL",
+                sourceType = PhotoSourceType.LOCAL_FILE,
+                filePath = prints[4].first,
+                aspectRatio = prints[4].second,
+                isFavorite = true,
+                createdAt = now - 200_000L
+            ),
+            PhotoEntity(
+                title = "极简方碑 · Noir Monolith",
+                catalogCode = "NO. 10 · BRUTALIST",
+                exifSummary = "ARCHITECTURAL STUDY · GOLD LINE",
+                sourceType = PhotoSourceType.LOCAL_FILE,
+                filePath = prints[5].first,
+                aspectRatio = prints[5].second,
+                isFavorite = false,
                 createdAt = now - 100_000L
             )
         )
-        photoDao.insertAll(curated)
+        val missing = curated.filterNot { existingCodes.contains(it.catalogCode) }
+        if (missing.isNotEmpty()) {
+            photoDao.insertAll(missing)
+        }
     }
 
     suspend fun importPickedPhotos(uris: List<Uri>): Int {
@@ -139,6 +182,29 @@ class PhotoRepository(
                 isFavorite = true,
                 createdAt = System.currentTimeMillis(),
                 effectTag = effectTag
+            )
+        )
+    }
+
+    suspend fun saveCollageArtwork(
+        title: String,
+        layout: CollageLayout,
+        renderedBitmap: Bitmap
+    ): Long {
+        val (path, ratio) = mediaManager.saveExportedBitmap(renderedBitmap)
+        val count = photoDao.countPhotos() + 1
+        val code = String.format(Locale.US, "POSTER %02d · %s", count, layout.displayName)
+        return photoDao.insertPhoto(
+            PhotoEntity(
+                title = title.ifBlank { "${layout.displayName}海报" },
+                catalogCode = code,
+                exifSummary = "策展拼图工坊 · ${layout.displayName}",
+                sourceType = PhotoSourceType.LOCAL_FILE,
+                filePath = path,
+                aspectRatio = ratio,
+                isFavorite = true,
+                createdAt = System.currentTimeMillis(),
+                effectTag = layout.displayName
             )
         )
     }

@@ -36,6 +36,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -75,7 +77,6 @@ import com.example.ui.theme.AtelierGalleryTheme
 import com.example.ui.theme.ScreeningBorder
 import com.example.ui.theme.ScreeningChampagne
 import com.example.ui.theme.ScreeningIvory
-import com.example.ui.theme.ScreeningMuted
 import com.example.ui.theme.ScreeningObsidian
 import com.example.ui.theme.ScreeningSurface
 import com.example.ui.theme.ScreeningSurfaceHigh
@@ -88,12 +89,20 @@ fun MotionReelScreen(
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val photos = uiState.photos
+    val photos = remember(uiState.photos, uiState.selectedIds) {
+        if (uiState.selectedIds.isNotEmpty()) {
+            uiState.photos.filter { uiState.selectedIds.contains(it.id) }.ifEmpty { uiState.photos }
+        } else {
+            uiState.photos
+        }
+    }
 
     var currentIndex by remember { mutableIntStateOf(0) }
     var isPlaying by remember { mutableStateOf(true) }
     var fastTempo by remember { mutableStateOf(false) }
+    var cinemaScope by remember { mutableStateOf(true) }
     var activeTransition by remember { mutableStateOf(SlideshowTransition.KEN_BURNS) }
+    var activeParticle by remember { mutableStateOf(ParticleStyle.DUST_BOKEH) }
     var slideProgress by remember { mutableFloatStateOf(0f) }
 
     val durationMs = if (fastTempo) 2600L else 4500L
@@ -141,7 +150,6 @@ fun MotionReelScreen(
             if (photos.isNotEmpty()) {
                 val safeIndex = currentIndex.coerceIn(0, photos.lastIndex)
 
-                // Fullscreen Animated Reel Stage
                 AnimatedContent(
                     targetState = safeIndex,
                     transitionSpec = {
@@ -165,13 +173,20 @@ fun MotionReelScreen(
                                 (slideInHorizontally(tween(650)) { it / 2 } + scaleIn(initialScale = 0.9f, animationSpec = tween(650)) + fadeIn(tween(500))) togetherWith
                                     (slideOutHorizontally(tween(650)) { -it / 2 } + fadeOut(tween(500)))
                             }
+                            SlideshowTransition.VINYL_SPIN -> {
+                                (scaleIn(initialScale = 0.45f, animationSpec = tween(700)) + fadeIn(tween(600))) togetherWith
+                                    (scaleOut(targetScale = 1.35f, animationSpec = tween(700)) + fadeOut(tween(500)))
+                            }
                         }
                     },
                     label = "reel_stage"
                 ) { idx ->
                     val photo = photos[idx]
                     val cubeAngle = if (activeTransition == SlideshowTransition.CUBE_3D_FLIP) {
-                        (slideProgress - 0.5f) * 14f
+                        (slideProgress - 0.5f) * 16f
+                    } else 0f
+                    val spinAngle = if (activeTransition == SlideshowTransition.VINYL_SPIN) {
+                        slideProgress * 12f
                     } else 0f
 
                     Box(modifier = Modifier.fillMaxSize()) {
@@ -183,15 +198,15 @@ fun MotionReelScreen(
                                 .fillMaxSize()
                                 .graphicsLayer {
                                     cameraDistance = 16f * density
-                                    scaleX = if (activeTransition == SlideshowTransition.KEN_BURNS) kenBurnsScale else 1.04f
-                                    scaleY = if (activeTransition == SlideshowTransition.KEN_BURNS) kenBurnsScale else 1.04f
+                                    scaleX = if (activeTransition == SlideshowTransition.KEN_BURNS) kenBurnsScale else 1.06f
+                                    scaleY = if (activeTransition == SlideshowTransition.KEN_BURNS) kenBurnsScale else 1.06f
                                     translationX = if (activeTransition == SlideshowTransition.KEN_BURNS) kenBurnsPan else 0f
                                     rotationY = cubeAngle
+                                    rotationZ = spinAngle
                                     transformOrigin = TransformOrigin.Center
                                 }
                         )
 
-                        // Cinema gradient scrim
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -206,19 +221,35 @@ fun MotionReelScreen(
                                 )
                         )
 
-                        // Subtle bokeh atmosphere
                         ParticleOverlayCanvas(
-                            style = if (activeTransition == SlideshowTransition.FILM_DISSOLVE) {
-                                ParticleStyle.FILM_LEAK
-                            } else {
-                                ParticleStyle.DUST_BOKEH
-                            },
+                            style = activeParticle,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
 
-                // Top Story Progress & Header
+                // Cinema 2.39:1 Letterbox Bars
+                if (cinemaScope) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .height(84.dp)
+                            .background(Color.Black.copy(alpha = 0.92f))
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(215.dp)
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.96f))
+                                )
+                            )
+                    )
+                }
+
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -266,49 +297,70 @@ fun MotionReelScreen(
                         ) {
                             IconButton(
                                 onClick = onBack,
-                                modifier = Modifier
-                                    .minimumInteractiveComponentSize()
-                                    .testTag("reel_back_button")
+                                modifier = Modifier.minimumInteractiveComponentSize().testTag("reel_back_button")
                             ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "退出影集",
-                                    tint = ScreeningIvory
-                                )
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "退出影集", tint = ScreeningIvory)
                             }
                         }
 
-                        Surface(
-                            onClick = { fastTempo = !fastTempo },
-                            shape = RoundedCornerShape(50),
-                            color = ScreeningObsidian.copy(alpha = 0.72f),
-                            border = BorderStroke(1.dp, ScreeningBorder),
-                            modifier = Modifier
-                                .minimumInteractiveComponentSize()
-                                .testTag("reel_tempo_button")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Surface(
+                                onClick = {
+                                    val list = ParticleStyle.entries
+                                    activeParticle = list[(list.indexOf(activeParticle) + 1) % list.size]
+                                },
+                                shape = RoundedCornerShape(50),
+                                color = ScreeningObsidian.copy(alpha = 0.72f),
+                                border = BorderStroke(1.dp, ScreeningBorder),
+                                modifier = Modifier.minimumInteractiveComponentSize()
                             ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Speed,
-                                    contentDescription = "切换节奏",
-                                    tint = ScreeningChampagne,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = if (fastTempo) "动感 2.6s" else "舒缓 4.5s",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = ScreeningIvory
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Filled.AutoAwesome, contentDescription = "粒子", tint = ScreeningChampagne, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(activeParticle.displayName, style = MaterialTheme.typography.labelLarge, color = ScreeningIvory)
+                                }
+                            }
+
+                            Surface(
+                                onClick = { cinemaScope = !cinemaScope },
+                                shape = RoundedCornerShape(50),
+                                color = ScreeningObsidian.copy(alpha = 0.72f),
+                                border = BorderStroke(1.dp, if (cinemaScope) ScreeningChampagne else ScreeningBorder),
+                                modifier = Modifier.minimumInteractiveComponentSize()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Filled.AspectRatio, contentDescription = "宽银幕", tint = ScreeningChampagne, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("2.39:1", style = MaterialTheme.typography.labelLarge, color = ScreeningIvory)
+                                }
+                            }
+
+                            Surface(
+                                onClick = { fastTempo = !fastTempo },
+                                shape = RoundedCornerShape(50),
+                                color = ScreeningObsidian.copy(alpha = 0.72f),
+                                border = BorderStroke(1.dp, ScreeningBorder),
+                                modifier = Modifier.minimumInteractiveComponentSize().testTag("reel_tempo_button")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Filled.Speed, contentDescription = "切换节奏", tint = ScreeningChampagne, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(if (fastTempo) "2.6s" else "4.5s", style = MaterialTheme.typography.labelLarge, color = ScreeningIvory)
+                                }
                             }
                         }
                     }
                 }
 
-                // Bottom Cinema Controls & Transition Selector
                 val currentPhoto = photos[safeIndex]
                 Column(
                     modifier = Modifier
@@ -355,7 +407,7 @@ fun MotionReelScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -373,11 +425,7 @@ fun MotionReelScreen(
                                 },
                                 modifier = Modifier.minimumInteractiveComponentSize()
                             ) {
-                                Icon(
-                                    imageVector = Icons.Filled.SkipPrevious,
-                                    contentDescription = "上一张",
-                                    tint = ScreeningIvory
-                                )
+                                Icon(Icons.Filled.SkipPrevious, contentDescription = "上一张", tint = ScreeningIvory)
                             }
                         }
 
@@ -385,9 +433,7 @@ fun MotionReelScreen(
                             onClick = { isPlaying = !isPlaying },
                             shape = CircleShape,
                             color = ScreeningChampagne,
-                            modifier = Modifier
-                                .size(60.dp)
-                                .testTag("reel_play_pause_btn")
+                            modifier = Modifier.size(60.dp).testTag("reel_play_pause_btn")
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
@@ -411,11 +457,7 @@ fun MotionReelScreen(
                                 },
                                 modifier = Modifier.minimumInteractiveComponentSize()
                             ) {
-                                Icon(
-                                    imageVector = Icons.Filled.SkipNext,
-                                    contentDescription = "下一张",
-                                    tint = ScreeningIvory
-                                )
+                                Icon(Icons.Filled.SkipNext, contentDescription = "下一张", tint = ScreeningIvory)
                             }
                         }
                     }

@@ -11,6 +11,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.ui.screens.CollageMakerScreen
 import com.example.ui.screens.EffectStudioScreen
 import com.example.ui.screens.GalleryHubScreen
 import com.example.ui.screens.MotionReelScreen
@@ -21,6 +22,7 @@ import com.example.ui.viewmodel.GalleryViewModel
 private const val ROUTE_GALLERY = "gallery"
 private const val ROUTE_DETAIL = "detail/{photoId}"
 private const val ROUTE_STUDIO = "studio/{photoId}"
+private const val ROUTE_COLLAGE = "collage"
 private const val ROUTE_REEL = "reel"
 
 class MainActivity : ComponentActivity() {
@@ -54,6 +56,9 @@ fun AtelierAppNavigation(
                 onOpenStudio = { photoId ->
                     navController.navigate("studio/$photoId")
                 },
+                onOpenCollage = {
+                    navController.navigate(ROUTE_COLLAGE)
+                },
                 onOpenMotionReel = {
                     navController.navigate(ROUTE_REEL)
                 }
@@ -84,6 +89,18 @@ fun AtelierAppNavigation(
                 photoId = photoId,
                 onBack = { navController.popBackStack() },
                 onSavedArtwork = { newId ->
+                    navController.navigate("detail/$newId") {
+                        popUpTo(ROUTE_GALLERY)
+                    }
+                }
+            )
+        }
+
+        composable(ROUTE_COLLAGE) {
+            CollageMakerScreen(
+                viewModel = galleryViewModel,
+                onBack = { navController.popBackStack() },
+                onCreatedArtwork = { newId ->
                     navController.navigate("detail/$newId") {
                         popUpTo(ROUTE_GALLERY)
                     }

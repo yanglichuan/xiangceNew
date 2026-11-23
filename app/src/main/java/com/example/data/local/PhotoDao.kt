@@ -22,6 +22,9 @@ interface PhotoDao {
     @Query("SELECT COUNT(*) FROM photos")
     suspend fun countPhotos(): Int
 
+    @Query("SELECT catalogCode FROM photos")
+    suspend fun getAllCatalogCodes(): List<String>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPhoto(photo: PhotoEntity): Long
 

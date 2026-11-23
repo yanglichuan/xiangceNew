@@ -16,9 +16,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import com.example.data.model.ParticleStyle
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.min
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -41,7 +43,7 @@ fun ParticleOverlayCanvas(
 
     val seeds = remember(style) {
         val rng = Random(style.ordinal * 77 + 19)
-        List(26) { idx ->
+        List(30) { idx ->
             ParticleSeed(
                 x = rng.nextFloat(),
                 y = rng.nextFloat(),
@@ -155,7 +157,81 @@ fun ParticleOverlayCanvas(
                     blendMode = BlendMode.Screen
                 )
             }
+            ParticleStyle.MATRIX_RAIN -> {
+                seeds.forEach { p ->
+                    val x = (p.x * w + parallaxOffset.x * 20f + w) % w
+                    val yProgress = ((p.phase / (2f * PI.toFloat())) + (timePhase / (2f * PI.toFloat())) * p.speed) % 1f
+                    val y = yProgress * h
+                    val streakLen = h * (0.07f + p.radiusFactor * 2f)
+                    val col = if (p.warm) Color(0xFF47E5FF) else Color(0xFFD4AF37)
+                    drawLine(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, col.copy(alpha = 0.75f)),
+                            startY = y - streakLen,
+                            endY = y
+                        ),
+                        start = Offset(x, y - streakLen),
+                        end = Offset(x, y),
+                        strokeWidth = 2.8f
+                    )
+                }
+            }
+            ParticleStyle.SNOW_PETALS -> {
+                seeds.forEach { p ->
+                    val progress = ((p.phase / (2f * PI.toFloat())) + (timePhase / (2f * PI.toFloat())) * p.speed * 0.6f) % 1f
+                    val sway = sin(timePhase * 1.6f + p.phase) * w * 0.04f
+                    val cx = ((p.x * w + sway + parallaxOffset.x * 24f) + w) % w
+                    val cy = progress * h
+                    val r = minDim * (0.008f + p.radiusFactor * 0.45f)
+                    val col = if (p.warm) Color(0xFFFFD6E0) else Color(0xFFFFFCF5)
+                    drawCircle(
+                        color = col.copy(alpha = 0.78f),
+                        radius = r,
+                        center = Offset(cx, cy)
+                    )
+                }
+            }
+            ParticleStyle.HEARTBEAT_PULSE -> {
+                val center = Offset(w * 0.5f + parallaxOffset.x * 20f, h * 0.5f + parallaxOffset.y * 20f)
+                val maxR = min(w, h) * 0.55f
+                for (ring in 0..2) {
+                    val phase = ((timePhase / (2f * PI.toFloat())) + ring * 0.33f) % 1f
+                    val radius = phase * maxR
+                    val alpha = (1f - phase) * 0.55f
+                    drawCircle(
+                        color = if (ring % 2 == 0) Color(0xFFD4AF37).copy(alpha = alpha) else Color(0xFFFF70A6).copy(alpha = alpha),
+                        radius = radius,
+                        center = center,
+                        style = Stroke(width = 3.5f)
+                    )
+                }
+            }
             ParticleStyle.NONE -> Unit
         }
+    }
+}
+
+@Composable
+fun HologramFoilOverlay(
+    parallaxOffset: Offset,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier.fillMaxSize()) {
+        val w = size.width
+        val h = size.height
+        val shift = (parallaxOffset.x + parallaxOffset.y) * 0.35f
+        drawRect(
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFF47E5FF).copy(alpha = 0.22f),
+                    Color(0xFFFFDF73).copy(alpha = 0.16f),
+                    Color(0xFFFF59B4).copy(alpha = 0.22f),
+                    Color(0xFF72FFCC).copy(alpha = 0.18f)
+                ),
+                start = Offset(w * (0f + shift), 0f),
+                end = Offset(w * (1f + shift), h)
+            ),
+            blendMode = BlendMode.Screen
+        )
     }
 }

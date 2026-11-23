@@ -20,11 +20,19 @@ data class PhysicsCardBody(
     val zOrder: Int
 )
 
+enum class PhysicsMode(val label: String) {
+    GRAVITY("重力模式"),
+    ZERO_G("失重漂浮"),
+    VORTEX("磁力漩涡")
+}
+
 class Physics2DEngine {
     private var bodies = mutableListOf<PhysicsCardBody>()
     private var containerW = 0f
     private var containerH = 0f
     private var draggedId: Long? = null
+    private var vortexAnchorX: Float? = null
+    private var vortexAnchorY: Float? = null
 
     fun syncBodies(
         photoIdsAndRatios: List<Pair<Long, Float>>,
@@ -52,8 +60,8 @@ class Physics2DEngine {
                 val row = idx / cols
                 val startX = (widthPx * (0.22f + col * 0.28f) + rng.nextFloat() * 40f - 20f)
                     .coerceIn(cw * 0.55f, widthPx - cw * 0.55f)
-                val startY = (heightPx * 0.20f + row * (ch * 0.68f))
-                    .coerceIn(ch * 0.55f, heightPx * 0.72f)
+                val startY = (heightPx * 0.16f + row * (ch * 0.58f))
+                    .coerceIn(ch * 0.55f, heightPx * 0.78f)
                 updated.add(
                     PhysicsCardBody(
                         photoId = id,
@@ -74,36 +82,67 @@ class Physics2DEngine {
         return bodies.toList()
     }
 
+    fun setVortexAnchor(x: Float?, y: Float?) {
+        vortexAnchorX = x
+        vortexAnchorY = y
+    }
+
     fun step(
         dtSec: Float,
         gravityX: Float,
         gravityY: Float,
-        zeroGravity: Boolean
+        mode: PhysicsMode
     ): List<PhysicsCardBody> {
         if (containerW <= 10f || containerH <= 10f || bodies.isEmpty()) return bodies
 
         val dt = dtSec.coerceIn(0.001f, 0.033f)
-        val damping = if (zeroGravity) 0.994f else 0.985f
+        val damping = when (mode) {
+            PhysicsMode.ZERO_G -> 0.994f
+            PhysicsMode.VORTEX -> 0.975f
+            PhysicsMode.GRAVITY -> 0.985f
+        }
         val angularDamping = 0.96f
-        val restitution = 0.74f
+        val restitution = 0.76f
         val topWall = 24f
         val bottomWall = max(topWall + 200f, containerH - 24f)
 
-        // 1. Integrate forces & velocities
+        val anchorX = vortexAnchorX ?: (containerW * 0.5f)
+        val anchorY = vortexAnchorY ?: (containerH * 0.46f)
+
         for (i in bodies.indices) {
-            var b = bodies[i]
+            val b = bodies[i]
             if (b.photoId == draggedId) continue
 
-            val gx = if (zeroGravity) gravityX * 0.15f else gravityX
-            val gy = if (zeroGravity) gravityY * 0.08f else gravityY
+            var ax: Float
+            var ay: Float
+            when (mode) {
+                PhysicsMode.GRAVITY -> {
+                    ax = gravityX
+                    ay = gravityY
+                }
+                PhysicsMode.ZERO_G -> {
+                    ax = gravityX * 0.15f
+                    ay = gravityY * 0.08f
+                }
+                PhysicsMode.VORTEX -> {
+                    val dx = anchorX - b.x
+                    val dy = anchorY - b.y
+                    val dist = max(60f, hypot(dx, dy))
+                    val nx = dx / dist
+                    val ny = dy / dist
+                    // Pull inward + tangential swirl force
+                    ax = nx * 920f - ny * 760f
+                    ay = ny * 920f + nx * 760f
+                }
+            }
 
-            var vx = (b.vx + gx * dt) * damping
-            var vy = (b.vy + gy * dt) * damping
+            var vx = (b.vx + ax * dt) * damping
+            var vy = (b.vy + ay * dt) * damping
             var av = b.angularVel * angularDamping
 
             var nx = b.x + vx * dt
             var ny = b.y + vy * dt
-            var angle = (b.angleDeg + av * dt)
+            val angle = b.angleDeg + av * dt
 
             val halfW = b.width * 0.5f
             val halfH = b.height * 0.5f
@@ -127,7 +166,7 @@ class Physics2DEngine {
                 vy = -vy * restitution
                 vx *= 0.92f
                 av *= 0.85f
-                if (kotlin.math.abs(vy) < 28f && !zeroGravity) vy = 0f
+                if (kotlin.math.abs(vy) < 28f && mode == PhysicsMode.GRAVITY) vy = 0f
             }
 
             bodies[i] = b.copy(
@@ -140,7 +179,6 @@ class Physics2DEngine {
             )
         }
 
-        // 2. Pairwise elastic collision resolution (bounding circle approximation for smooth 60fps card bounce)
         for (i in 0 until bodies.size) {
             for (j in i + 1 until bodies.size) {
                 val a = bodies[i]
@@ -245,9 +283,9 @@ class Physics2DEngine {
         for (i in bodies.indices) {
             val b = bodies[i]
             bodies[i] = b.copy(
-                vx = (rng.nextFloat() - 0.5f) * 1800f,
-                vy = -850f - rng.nextFloat() * 1100f,
-                angularVel = (rng.nextFloat() - 0.5f) * 180f
+                vx = (rng.nextFloat() - 0.5f) * 1950f,
+                vy = -900f - rng.nextFloat() * 1150f,
+                angularVel = (rng.nextFloat() - 0.5f) * 200f
             )
         }
     }
@@ -262,7 +300,7 @@ class Physics2DEngine {
             val row = i / cols
             val rows = max(1, (total + 1) / cols)
             val tx = containerW * (0.29f + col * 0.42f)
-            val ty = containerH * (0.24f + (row.toFloat() / max(1, rows - 1)) * 0.48f)
+            val ty = containerH * (0.20f + (row.toFloat() / max(1, rows - 1)) * 0.54f)
             bodies[i] = b.copy(
                 x = tx,
                 y = ty,

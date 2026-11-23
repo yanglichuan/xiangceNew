@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">Atelier 相册</string>
+    <string name="subtitle_museum">ATELIER MUSEUM · ARCHIVAL GALLERY</string>
+    <string name="action_import_photos">导入照片</string>
+    <string name="action_motion_reel">动感影集</string>
+    <string name="action_fx_studio">特效工坊</string>
+    <string name="action_save_artwork">保存成品</string>
+    <string name="action_share_artwork">分享作品</string>
+    <string name="mode_corridor">3D走廊</string>
+    <string name="mode_cube_parallax">3D魔方</string>
+    <string name="mode_physics">重力堆</string>
+    <string name="mode_timeline">时间轴</string>
+    <string name="cd_back">返回</string>
+    <string name="cd_favorite">收藏作品</string>
+    <string name="cd_delete_photo">移出展厅</string>
+    <string name="cd_import_photos">从手机相册导入照片</string>
+    <string name="cd_motion_reel">播放炫酷转场动感影集</string>
+    <string name="cd_shake_pile">脉冲弹跳重排照片</string>
+</resources>

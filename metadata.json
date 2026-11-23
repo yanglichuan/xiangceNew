@@ -1,0 +1,6 @@
+{
+  "name": "Atelier 相册",
+  "description": "极简美术馆风格 3D 空间相册与创意特效工坊，支持 3D 旋转走廊、3D 魔方视差流、物理弹跳照片堆、实时艺术特效与动感大片影集。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
